@@ -1,0 +1,59 @@
+# Discovery Rules: Cluster Grundlagen
+# Gruppe: cluster_basics
+# Diese Regeln ermitteln die Cluster-Basiskonfiguration
+
+group: cluster_basics
+description: Pacemaker/Corosync Cluster Grundkonfiguration
+enabled: true
+
+discoveries:
+  - id: DISC_PACEMAKER_VERSION
+    description: Pacemaker-Version ermitteln
+    live_cmd: "pacemakerd --version 2>/dev/null || crm --version 2>/dev/null"
+    parser:
+      type: regex
+      patterns:
+        - name: version
+          regex: '(\d+\.\d+\.\d+)'
+          group: 1
+    store_as: pacemaker_version
+
+  - id: DISC_COROSYNC_VERSION
+    description: Corosync-Version ermitteln
+    live_cmd: "corosync -v 2>&1 | head -1"
+    parser:
+      type: regex
+      patterns:
+        - name: version
+          regex: 'version.*?(\d+\.\d+\.\d+)'
+          group: 1
+    store_as: corosync_version
+
+  - id: DISC_CLUSTER_NAME
+    description: Cluster-Name aus Corosync-Konfiguration
+    live_cmd: "grep -E '^\\s*cluster_name:' /etc/corosync/corosync.conf 2>/dev/null | awk '{print $2}'"
+    parser:
+      type: raw
+    store_as: cluster_name
+
+  - id: DISC_CLUSTER_NODES
+    description: Cluster-Knoten aus Corosync
+    live_cmd: "crm_node -l 2>/dev/null || corosync-cmapctl runtime.members 2>/dev/null"
+    parser:
+      type: lines
+      filter_empty: true
+    store_as: cluster_nodes
+
+  - id: DISC_CLUSTER_STATUS
+    description: Aktueller Cluster-Status
+    live_cmd: "crm_mon -1 --simple-status 2>/dev/null || pcs status --brief 2>/dev/null"
+    parser:
+      type: raw
+    store_as: cluster_status_brief
+
+  - id: DISC_QUORUM_STATUS
+    description: Quorum-Status
+    live_cmd: "corosync-quorumtool -s 2>/dev/null | grep -E '(Quorate|Nodes:)'"
+    parser:
+      type: lines
+    store_as: quorum_info

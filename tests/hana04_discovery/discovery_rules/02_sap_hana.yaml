@@ -1,0 +1,68 @@
+# Discovery Rules: SAP HANA Informationen
+# Gruppe: sap_hana
+# Diese Regeln sammeln SAP HANA spezifische Informationen
+
+group: sap_hana
+description: SAP HANA System-Konfiguration und Status
+enabled: true
+
+discoveries:
+  - id: DISC_SAP_INSTANCES
+    description: SAP-Instanzen ermitteln
+    live_cmd: "/usr/sap/hostctrl/exe/saphostctrl -function ListInstances 2>/dev/null"
+    parser:
+      type: lines
+      filter_empty: true
+    store_as: sap_instances
+
+  - id: DISC_HANA_SID
+    description: HANA SID aus Verzeichnisstruktur
+    live_cmd: "ls -d /usr/sap/???/HDB?? 2>/dev/null | head -1 | cut -d/ -f4"
+    parser:
+      type: raw
+    store_as: hana_sid
+
+  - id: DISC_HANA_INSTANCE
+    description: HANA Instanz-Nummer
+    live_cmd: "ls -d /usr/sap/???/HDB?? 2>/dev/null | head -1 | grep -oE 'HDB[0-9]+' | sed 's/HDB//'"
+    parser:
+      type: raw
+    store_as: hana_instance_nr
+
+  - id: DISC_HANA_VERSION
+    description: HANA-Version ermitteln
+    live_cmd: |
+      SID=$(ls -d /usr/sap/???/HDB?? 2>/dev/null | head -1 | cut -d/ -f4)
+      if [ -n "$SID" ]; then
+        su - ${SID,,}adm -c 'HDB version' 2>/dev/null | grep -E 'version:|HDB version'
+      fi
+    parser:
+      type: regex
+      patterns:
+        - name: version
+          regex: 'version:\s*(\d+\.\d+\.\d+)'
+          group: 1
+    store_as: hana_version
+
+  - id: DISC_HANA_SR_STATE
+    description: HANA System Replication Status
+    live_cmd: |
+      SID=$(ls -d /usr/sap/???/HDB?? 2>/dev/null | head -1 | cut -d/ -f4)
+      if [ -n "$SID" ]; then
+        su - ${SID,,}adm -c 'hdbnsutil -sr_state --sapcontrol=1' 2>/dev/null
+      fi
+    parser:
+      type: key_value
+      delimiter: "="
+    store_as: hana_sr_state
+
+  - id: DISC_HANA_TOPOLOGY
+    description: HANA SR Topologie
+    live_cmd: |
+      SID=$(ls -d /usr/sap/???/HDB?? 2>/dev/null | head -1 | cut -d/ -f4)
+      if [ -n "$SID" ]; then
+        su - ${SID,,}adm -c 'SAPHanaSR-showAttr' 2>/dev/null | head -30
+      fi
+    parser:
+      type: raw
+    store_as: hana_topology

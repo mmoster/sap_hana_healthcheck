@@ -1,0 +1,261 @@
+discovery_run:
+  timestamp: '2026-03-12T15:13:57.084831'
+  rules_dir: /home/mmoster/projects/SAP_cluster_health_check/tests/hana04_discovery/discovery_rules
+  groups:
+  - system_info
+  - cluster_basics
+  - sap_hana
+  - resources
+  - network
+  hosts_count: 1
+hosts:
+  hana04:
+    access_method: ssh
+    discovery_timestamp: '2026-03-12T15:13:39.735914'
+    data:
+      system_info:
+        hostname:
+          success: true
+          value: hana04
+          raw: hana04
+          error: null
+        os_info:
+          success: true
+          value:
+            NAME: Red Hat Enterprise Linux
+            VERSION: 10.0 (Coughlan)
+            ID: rhel
+            ID_LIKE: centos fedora
+            VERSION_ID: '10.0'
+            PLATFORM_ID: platform:el10
+            PRETTY_NAME: Red Hat Enterprise Linux 10.0 (Coughlan)
+            ANSI_COLOR: 0;31
+            LOGO: fedora-logo-icon
+            CPE_NAME: cpe:/o:redhat:enterprise_linux:10::baseos
+            HOME_URL: https://www.redhat.com/
+            VENDOR_NAME: Red Hat
+            VENDOR_URL: https://www.redhat.com/
+            DOCUMENTATION_URL: https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/10
+            BUG_REPORT_URL: https://issues.redhat.com/
+            REDHAT_BUGZILLA_PRODUCT: Red Hat Enterprise Linux 10
+            REDHAT_BUGZILLA_PRODUCT_VERSION: '10.0'
+            REDHAT_SUPPORT_PRODUCT: Red Hat Enterprise Linux
+            REDHAT_SUPPORT_PRODUCT_VERSION: '10.0'
+          raw: 'NAME="Red Hat Enterprise Linux"
+
+            VERSION="10.0 (Coughlan)"
+
+            ID="rhel"
+
+            ID_LIKE="centos fedora"
+
+            VERSION_ID="10.0"
+
+            PLATFORM_ID="platform:el10"
+
+            PRETTY_NAME="Red Hat Enterprise Linux 10.0 (Coughlan)"
+
+            ANSI_COLOR="0;31"
+
+            LOGO="fedora-logo-icon"
+
+            CPE_NAME="cpe:/o:redhat:enterprise_linux:10::baseos"
+
+            HOME_URL="https://www.redhat.com/"
+
+            VENDOR_NAME="Red Hat"
+
+            VENDOR_URL="https://www.redhat.com/"
+
+            DOCUMENTATION_URL="https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/10"
+
+            BUG_REPORT_URL="https://issues.redhat.com/"
+
+
+            REDHAT_BUGZILLA_PRODUCT="Red Hat Enterprise Linux 10"
+
+            REDHAT_BUGZILLA_PRODUCT_VERSION=10.0
+
+            REDHAT_SUPPORT_PRODUCT="Red Hat Enterprise Linux"
+
+            REDHAT_SUPPORT_PRODUCT_VERSION="10.0"'
+          error: null
+        kernel_version:
+          success: true
+          value: 6.12.0-55.9.1.el10_0.x86_64
+          raw: 6.12.0-55.9.1.el10_0.x86_64
+          error: null
+        uptime:
+          success: true
+          value: up 3 weeks, 1 day, 23 hours, 32 minutes
+          raw: up 3 weeks, 1 day, 23 hours, 32 minutes
+          error: null
+        architecture:
+          success: true
+          value: x86_64
+          raw: x86_64
+          error: null
+      cluster_basics:
+        pacemaker_version:
+          success: false
+          value: null
+          raw: null
+          error: ''
+        corosync_version:
+          success: true
+          value:
+            version: null
+          raw: 'bash: line 1: corosync: command not found'
+          error: null
+        cluster_name:
+          success: true
+          value: ''
+          raw: ''
+          error: null
+        cluster_nodes:
+          success: false
+          value: null
+          raw: null
+          error: ''
+        cluster_status_brief:
+          success: false
+          value: null
+          raw: null
+          error: ''
+        quorum_info:
+          success: false
+          value: null
+          raw: null
+          error: ''
+      sap_hana:
+        sap_instances:
+          success: false
+          value: null
+          raw: null
+          error: ''
+        hana_sid:
+          success: true
+          value: ''
+          raw: ''
+          error: null
+        hana_instance_nr:
+          success: true
+          value: ''
+          raw: ''
+          error: null
+        hana_version:
+          success: true
+          value:
+            version: null
+          raw: ''
+          error: null
+        hana_sr_state:
+          success: true
+          value: {}
+          raw: ''
+          error: null
+        hana_topology:
+          success: true
+          value: ''
+          raw: ''
+          error: null
+      resources:
+        resources_list:
+          success: false
+          value: null
+          raw: null
+          error: ''
+        resources_running:
+          success: false
+          value: null
+          raw: null
+          error: ''
+        stonith_devices:
+          success: false
+          value: null
+          raw: null
+          error: ''
+        stonith_config:
+          success: false
+          value: null
+          raw: null
+          error: ''
+        constraints:
+          success: false
+          value: null
+          raw: null
+          error: ''
+        resource_defaults:
+          success: false
+          value: null
+          raw: null
+          error: ''
+        clone_config:
+          success: false
+          value: null
+          raw: null
+          error: ''
+      network:
+        corosync_rings:
+          success: false
+          value: null
+          raw: null
+          error: ''
+        corosync_transport:
+          success: false
+          value: null
+          raw: null
+          error: ''
+        ip_addresses:
+          success: true
+          value:
+          - 127.0.0.1/8 lo
+          - 192.168.5.41/24 enp1s0
+          - 192.168.10.41/24 enp2s0
+          raw: '127.0.0.1/8 lo
+
+            192.168.5.41/24 enp1s0
+
+            192.168.10.41/24 enp2s0'
+          error: null
+        virtual_ips:
+          success: false
+          value: null
+          raw: null
+          error: ''
+        hosts_entries:
+          success: true
+          value:
+          - 127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+          - ::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+          - 192.168.5.40 hana03
+          - 192.168.5.41 hana04
+          raw: '127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+
+            ::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+
+            192.168.5.40 hana03
+
+            192.168.5.41 hana04'
+          error: null
+        firewall_status:
+          success: true
+          value: active
+          raw: active
+          error: null
+    errors:
+    - 'DISC_PACEMAKER_VERSION: '
+    - 'DISC_CLUSTER_NODES: '
+    - 'DISC_CLUSTER_STATUS: '
+    - 'DISC_QUORUM_STATUS: '
+    - 'DISC_SAP_INSTANCES: '
+    - 'DISC_RESOURCES_ALL: '
+    - 'DISC_RESOURCES_RUNNING: '
+    - 'DISC_STONITH_DEVICES: '
+    - 'DISC_STONITH_CONFIG: '
+    - 'DISC_CONSTRAINTS: '
+    - 'DISC_RESOURCE_DEFAULTS: '
+    - 'DISC_CLONE_CONFIG: '
+    - 'DISC_COROSYNC_RINGS: '
+    - 'DISC_COROSYNC_TRANSPORT: '
+    - 'DISC_VIRTUAL_IPS: '

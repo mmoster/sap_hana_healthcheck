@@ -1,0 +1,50 @@
+# Discovery Rules: Netzwerk-Konfiguration
+# Gruppe: network
+# Diese Regeln sammeln Netzwerk-relevante Informationen
+
+group: network
+description: Netzwerk- und Kommunikationskonfiguration
+enabled: true
+
+discoveries:
+  - id: DISC_COROSYNC_RINGS
+    description: Corosync-Ringe/Links
+    live_cmd: "corosync-cfgtool -s 2>/dev/null"
+    parser:
+      type: raw
+    store_as: corosync_rings
+
+  - id: DISC_COROSYNC_TRANSPORT
+    description: Corosync Transport-Konfiguration
+    live_cmd: "grep -E '(transport|interface|bindnetaddr|mcastaddr)' /etc/corosync/corosync.conf 2>/dev/null"
+    parser:
+      type: lines
+    store_as: corosync_transport
+
+  - id: DISC_IP_ADDRESSES
+    description: IP-Adressen des Systems
+    live_cmd: "ip -4 addr show | grep inet | awk '{print $2, $NF}'"
+    parser:
+      type: lines
+    store_as: ip_addresses
+
+  - id: DISC_VIRTUAL_IPS
+    description: Virtuelle IPs aus Cluster
+    live_cmd: "crm_resource -L 2>/dev/null | grep -iE '(IPaddr|ip)' || pcs resource show | grep -i ip 2>/dev/null"
+    parser:
+      type: lines
+    store_as: virtual_ips
+
+  - id: DISC_HOSTS_FILE
+    description: /etc/hosts Einträge
+    live_cmd: "grep -vE '^#|^$' /etc/hosts"
+    parser:
+      type: lines
+    store_as: hosts_entries
+
+  - id: DISC_FIREWALL_STATUS
+    description: Firewall-Status
+    live_cmd: "systemctl is-active firewalld 2>/dev/null || systemctl is-active iptables 2>/dev/null || echo 'unknown'"
+    parser:
+      type: raw
+    store_as: firewall_status

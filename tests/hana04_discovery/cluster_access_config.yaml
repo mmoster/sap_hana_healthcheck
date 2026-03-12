@@ -1,0 +1,27 @@
+ansible_inventory_source: default
+ansible_inventory_path: /etc/ansible/hosts
+sosreport_directory: null
+hosts_file: /home/mmoster/projects/SAP_cluster_health_check/tests/hana04_discovery/hosts.txt
+nodes:
+  hana04:
+    hostname: hana04
+    ssh_reachable: true
+    ssh_user: root
+    ansible_reachable: false
+    ansible_host: null
+    ansible_user: null
+    sosreport_path: null
+    preferred_method: ssh
+    last_checked: '2026-03-12T15:13:38.724309'
+  mmoster-thinkpadp1gen7.rmtde.csb:
+    hostname: mmoster-thinkpadp1gen7.rmtde.csb
+    ssh_reachable: false
+    ssh_user: null
+    ansible_reachable: true
+    ansible_host: mmoster-thinkpadp1gen7.rmtde.csb
+    ansible_user: null
+    sosreport_path: null
+    preferred_method: ansible
+    last_checked: '2026-03-12T15:13:38.724028'
+discovery_timestamp: '2026-03-12T15:13:39.734316'
+discovery_complete: true

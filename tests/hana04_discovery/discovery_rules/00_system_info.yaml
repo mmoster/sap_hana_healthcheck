@@ -1,0 +1,49 @@
+# Discovery Rules: System-Informationen
+# Gruppe: system_info
+# Diese Regeln sammeln grundlegende Systeminformationen
+
+group: system_info
+description: Grundlegende System- und OS-Informationen
+enabled: true
+
+discoveries:
+  - id: DISC_HOSTNAME
+    description: Hostname und FQDN ermitteln
+    live_cmd: "hostname -f"
+    parser:
+      type: raw
+    store_as: hostname
+
+  - id: DISC_OS_RELEASE
+    description: Betriebssystem-Version
+    live_cmd: "cat /etc/os-release"
+    parser:
+      type: key_value
+      delimiter: "="
+      strip_quotes: true
+    store_as: os_info
+    extract:
+      - NAME
+      - VERSION_ID
+      - ID
+
+  - id: DISC_KERNEL
+    description: Kernel-Version
+    live_cmd: "uname -r"
+    parser:
+      type: raw
+    store_as: kernel_version
+
+  - id: DISC_UPTIME
+    description: System-Uptime
+    live_cmd: "uptime -p"
+    parser:
+      type: raw
+    store_as: uptime
+
+  - id: DISC_ARCH
+    description: System-Architektur
+    live_cmd: "uname -m"
+    parser:
+      type: raw
+    store_as: architecture
