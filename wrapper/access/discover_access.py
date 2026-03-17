@@ -98,13 +98,16 @@ class AccessDiscovery:
 
     def __init__(self, config_dir: str = ".", sosreport_dir: Optional[str] = None,
                  hosts_file: Optional[str] = None, force_rediscover: bool = False,
-                 debug: bool = False):
+                 debug: bool = False, ansible_group: Optional[str] = None,
+                 skip_ansible: bool = False):
         self.config_dir = Path(config_dir)
         self.config_path = self.config_dir / self.CONFIG_FILE
         self.sosreport_dir = sosreport_dir
         self.hosts_file = hosts_file
         self.force_rediscover = force_rediscover
         self.debug = debug
+        self.ansible_group = ansible_group
+        self.skip_ansible = skip_ansible
         self.config = self._load_or_create_config()
 
     def _load_or_create_config(self) -> AccessConfig:
@@ -274,6 +277,63 @@ class AccessDiscovery:
         print(f"Found {len(sosreports)} SOSreports")
         return sosreports
 
+    def discover_cluster_nodes(self, seed_host: str, user: str = None) -> List[str]:
+        """
+        Discover cluster members by connecting to a seed node and querying the cluster.
+        Tries multiple methods: crm_node, pcs status, corosync-cmapctl.
+        Returns list of cluster node hostnames.
+        """
+        ssh_user = user or 'root'
+        cluster_nodes = []
+
+        # Commands to try for discovering cluster nodes
+        discovery_commands = [
+            # crm_node (SUSE/generic)
+            "crm_node -l | awk '{print $2}'",
+            # pcs status (RHEL)
+            "pcs status nodes | grep -E 'Online|Standby|Offline' | tr ' ' '\\n' | grep -v -E '^$|Online|Standby|Offline|:'",
+            # corosync-cmapctl
+            "corosync-cmapctl -b nodelist.node | grep 'ring0_addr' | cut -d= -f2 | tr -d ' '",
+            # crm status (fallback)
+            "crm status | grep -E '^Node' | awk '{print $2}'",
+        ]
+
+        print(f"\n=== Discovering Cluster Nodes from {seed_host} ===")
+
+        for cmd in discovery_commands:
+            try:
+                ssh_cmd = [
+                    "ssh", "-o", "BatchMode=yes",
+                    "-o", f"ConnectTimeout={self.SSH_TIMEOUT}",
+                    "-o", "StrictHostKeyChecking=no",
+                    f"{ssh_user}@{seed_host}",
+                    cmd
+                ]
+                result = subprocess.run(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                        universal_newlines=True, timeout=self.SSH_TIMEOUT + 2)
+
+                if result.returncode == 0 and result.stdout.strip():
+                    nodes = [n.strip() for n in result.stdout.strip().split('\n') if n.strip()]
+                    if nodes:
+                        cluster_nodes = nodes
+                        if self.debug:
+                            print(f"  [DEBUG] Found cluster nodes via: {cmd[:40]}...")
+                        print(f"  Found {len(cluster_nodes)} cluster node(s): {', '.join(cluster_nodes)}")
+                        break
+            except subprocess.TimeoutExpired:
+                continue
+            except Exception as e:
+                if self.debug:
+                    print(f"  [DEBUG] Command failed: {e}")
+                continue
+
+        if not cluster_nodes:
+            print(f"  Could not discover cluster nodes from {seed_host}")
+            print(f"  Using {seed_host} as only node")
+            cluster_nodes = [seed_host]
+
+        return cluster_nodes
+
     def check_ssh_access(self, hostname: str, user: str = None) -> tuple:
         """Check SSH access to a host. Returns (reachable, user)."""
         users_to_try = [user] if user else [os.environ.get('USER', 'root'), 'root']
@@ -360,14 +420,48 @@ class AccessDiscovery:
         # Collect all hosts from different sources
         all_hosts = {}  # hostname -> {ansible_info, sosreport_path}
 
-        # 1. Discover Ansible inventory
-        self.discover_ansible_inventory()
-        ansible_hosts = self.get_ansible_hosts()
-        for hostname, info in ansible_hosts.items():
-            all_hosts[hostname] = {'ansible_info': info, 'sosreport_path': None}
-
-        # 2. Get hosts from file
+        # 1. Get hosts from file/command line first
         file_hosts = self.get_hosts_from_file()
+
+        # 2. If hosts specified, try to discover cluster members from first reachable host
+        if file_hosts:
+            if self.debug:
+                print(f"  [DEBUG] Hosts specified, attempting cluster auto-discovery")
+
+            # Try to discover cluster nodes from the first specified host
+            for seed_host in file_hosts:
+                # Quick SSH check
+                reachable, ssh_user = self.check_ssh_access(seed_host)
+                if reachable:
+                    # Discover cluster members
+                    cluster_nodes = self.discover_cluster_nodes(seed_host, ssh_user)
+                    # Use cluster nodes instead of just the specified hosts
+                    file_hosts = cluster_nodes
+                    break
+                else:
+                    if self.debug:
+                        print(f"  [DEBUG] {seed_host} not reachable, trying next...")
+
+        # 3. Discover Ansible inventory (skip if hosts provided)
+        if not self.skip_ansible and not file_hosts:
+            self.discover_ansible_inventory()
+            ansible_hosts = self.get_ansible_hosts()
+
+            # Filter by group if specified
+            if self.ansible_group:
+                filtered_hosts = {}
+                for hostname, info in ansible_hosts.items():
+                    groups = info.get('groups', [])
+                    if self.ansible_group in groups or self.ansible_group == 'all':
+                        filtered_hosts[hostname] = info
+                if self.debug:
+                    print(f"  [DEBUG] Filtered to group '{self.ansible_group}': {len(filtered_hosts)} hosts")
+                ansible_hosts = filtered_hosts
+
+            for hostname, info in ansible_hosts.items():
+                all_hosts[hostname] = {'ansible_info': info, 'sosreport_path': None}
+
+        # 4. Add hosts from file/cluster discovery
         for hostname in file_hosts:
             if hostname not in all_hosts:
                 all_hosts[hostname] = {'ansible_info': None, 'sosreport_path': None}

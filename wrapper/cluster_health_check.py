@@ -47,7 +47,7 @@ class ClusterHealthCheck:
 
     def __init__(self, config_dir: str = None, sosreport_dir: str = None,
                  hosts_file: str = None, workers: int = 10, rules_path: str = None,
-                 debug: bool = False):
+                 debug: bool = False, ansible_group: str = None, skip_ansible: bool = False):
         self.config_dir = Path(config_dir) if config_dir else SCRIPT_DIR
         self.sosreport_dir = sosreport_dir
         self.hosts_file = hosts_file
@@ -57,6 +57,8 @@ class ClusterHealthCheck:
         self.rules_engine = None
         self.check_results = []
         self.debug = debug
+        self.ansible_group = ansible_group
+        self.skip_ansible = skip_ansible
 
     def _debug_print(self, message: str):
         """Print debug message if debug mode is enabled."""
@@ -102,7 +104,9 @@ class ClusterHealthCheck:
             sosreport_dir=self.sosreport_dir,
             hosts_file=self.hosts_file,
             force_rediscover=force,
-            debug=self.debug
+            debug=self.debug,
+            ansible_group=self.ansible_group,
+            skip_ansible=self.skip_ansible
         )
         discovery.MAX_WORKERS = self.workers
 
@@ -404,12 +408,12 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s hana01 hana02            Check specific hosts
-  %(prog)s -d hana01 hana02         Check hosts with debug output
-  %(prog)s --access-only hana01     Only test access to host
-  %(prog)s                          Run full health check (auto-discover hosts)
+  %(prog)s hana03                   Auto-discover cluster from hana03 and check all members
+  %(prog)s -d hana03                Same with debug output
+  %(prog)s --access-only hana03     Only test access (discover cluster members)
+  %(prog)s -g sap_cluster           Only check hosts in Ansible group 'sap_cluster'
+  %(prog)s                          Run full health check (all Ansible inventory hosts)
   %(prog)s --show-config            Show current configuration
-  %(prog)s --delete-config          Delete config and restart
   %(prog)s -H hosts.txt             Use custom hosts file
   %(prog)s -s /path/to/sosreports   Use SOSreport directory
         """
@@ -428,6 +432,10 @@ Examples:
     parser.add_argument(
         '--sosreport-dir', '-s',
         help='Directory containing SOSreport archives/directories'
+    )
+    parser.add_argument(
+        '--group', '-g',
+        help='Only check hosts from this Ansible inventory group'
     )
     parser.add_argument(
         '--config-dir', '-c',
@@ -544,7 +552,8 @@ Examples:
         hosts_file=hosts_file,
         workers=args.workers,
         rules_path=args.rules_path,
-        debug=args.debug
+        debug=args.debug,
+        ansible_group=args.group
     )
 
     def cleanup_temp_file():
