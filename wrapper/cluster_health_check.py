@@ -671,6 +671,252 @@ HEALTH CHECK RULES
 """)
 
 
+def print_suggestions(step: str):
+    """Print detailed suggestions for a specific step."""
+    suggestions = {
+        'access': """
+===============================================================================
+                         ACCESS DISCOVERY - Suggestions
+===============================================================================
+
+PURPOSE
+-------
+  Discover how to connect to cluster nodes (SSH, Ansible, or SOSreports)
+
+COMMON ISSUES & SOLUTIONS
+-------------------------
+
+  1. SSH Connection Failed
+     - Check SSH keys: ssh-copy-id root@hana01
+     - Test manually: ssh -o BatchMode=yes root@hana01 hostname
+     - Check firewall: firewall-cmd --list-all
+
+  2. Permission Denied
+     - Ensure root access or sudo without password
+     - Check /etc/ssh/sshd_config for PermitRootLogin
+
+  3. Host Not Found
+     - Verify hostname in /etc/hosts or DNS
+     - Try IP address: ./cluster_health_check.py 192.168.1.100
+
+  4. Ansible Inventory Issues
+     - Check inventory: ansible-inventory --list
+     - Use specific group: ./cluster_health_check.py -g sap_cluster
+     - Skip Ansible: specify hosts directly
+
+COMMANDS TO TRY
+---------------
+  # Debug connection
+  ./cluster_health_check.py -d --access-only hana01
+
+  # Use SOSreports instead
+  ./cluster_health_check.py -s /path/to/sosreports/
+
+  # Specify hosts manually
+  ./cluster_health_check.py hana01 hana02
+
+DOCUMENTATION
+-------------
+  SSH: https://man.openbsd.org/ssh
+  Ansible: https://docs.ansible.com/ansible/latest/inventory_guide/
+""",
+        'config': """
+===============================================================================
+                      CLUSTER CONFIGURATION - Suggestions
+===============================================================================
+
+PURPOSE
+-------
+  Verify cluster configuration (quorum, corosync, resources)
+
+CHECKS PERFORMED
+----------------
+  CHK_NODE_STATUS        - All nodes online
+  CHK_CLUSTER_QUORUM     - Quorum is established
+  CHK_QUORUM_CONFIG      - Quorum settings correct (expected_votes, two_node)
+  CHK_CLONE_CONFIG       - Clone resources properly configured
+  CHK_SETUP_VALIDATION   - Basic setup validation
+  CHK_CIB_TIME_SYNC      - CIB timestamps synchronized
+  CHK_PACKAGE_CONSISTENCY - Package versions match across nodes
+
+COMMON ISSUES & SOLUTIONS
+-------------------------
+
+  1. Expected Votes Not Configured
+     - Check: grep expected_votes /etc/corosync/corosync.conf
+     - Fix: Set expected_votes in quorum section
+     - For 2-node: also set two_node: 1 and wait_for_all: 0
+
+  2. Quorum Not Established
+     - Check: corosync-quorumtool -s
+     - Verify all nodes are online: crm_mon -1
+     - Check corosync: systemctl status corosync
+
+  3. No Designated Controller (DC)
+     - Cluster may not be running: pcs status
+     - Start cluster: pcs cluster start --all
+
+COMMANDS TO CHECK
+-----------------
+  # Cluster status
+  pcs status
+  crm_mon -1
+
+  # Quorum status
+  corosync-quorumtool -s
+
+  # Configuration
+  pcs config show
+  crm configure show
+
+DOCUMENTATION
+-------------
+  Red Hat HA Quorum:
+    https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/configuring_and_managing_high_availability_clusters/assembly_configuring-cluster-quorum-configuring-and-managing-high-availability-clusters
+
+  Corosync Configuration:
+    https://clusterlabs.org/pacemaker/doc/2.1/Pacemaker_Explained/html/cluster-options.html
+""",
+        'pacemaker': """
+===============================================================================
+                       PACEMAKER/COROSYNC - Suggestions
+===============================================================================
+
+PURPOSE
+-------
+  Check Pacemaker resources, STONITH/fencing, and cluster health
+
+CHECKS PERFORMED
+----------------
+  CHK_STONITH_CONFIG     - STONITH is enabled and configured
+  CHK_RESOURCE_STATUS    - All resources running
+  CHK_RESOURCE_FAILURES  - No resource failures
+  CHK_ALERT_FENCING      - Fencing alerts configured
+  CHK_MASTER_SLAVE_ROLES - Master/slave roles correct
+  CHK_MAJORITY_MAKER     - Majority maker for 2-node clusters
+
+COMMON ISSUES & SOLUTIONS
+-------------------------
+
+  1. STONITH Not Configured
+     - CRITICAL: Production clusters MUST have STONITH
+     - Check: pcs property show stonith-enabled
+     - Configure fencing agent for your hardware/cloud
+
+  2. Resource Failures
+     - Check: pcs resource failcount show
+     - Clear failures: pcs resource cleanup <resource>
+     - Check logs: journalctl -u pacemaker
+
+  3. Resources Not Running
+     - Check constraints: pcs constraint show
+     - Check resource config: pcs resource show <resource>
+     - Start resource: pcs resource enable <resource>
+
+  4. Split-Brain Risk
+     - Ensure STONITH is working
+     - Test fencing: pcs stonith fence <node> --off
+
+COMMANDS TO CHECK
+-----------------
+  # Resource status
+  pcs status resources
+  crm_mon -1 -rf
+
+  # STONITH status
+  pcs stonith status
+  pcs property show stonith-enabled
+
+  # Resource failures
+  pcs resource failcount show
+
+  # Fencing history
+  pcs stonith history
+
+DOCUMENTATION
+-------------
+  Red Hat Fencing:
+    https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/configuring_and_managing_high_availability_clusters/assembly_configuring-fencing-configuring-and-managing-high-availability-clusters
+
+  Pacemaker Resources:
+    https://clusterlabs.org/pacemaker/doc/2.1/Pacemaker_Explained/html/resources.html
+""",
+        'sap': """
+===============================================================================
+                           SAP HANA - Suggestions
+===============================================================================
+
+PURPOSE
+-------
+  Check SAP HANA System Replication and SAP-specific configurations
+
+CHECKS PERFORMED
+----------------
+  CHK_HANA_SR_STATUS     - HANA System Replication active
+  CHK_SITE_ROLES         - Primary/secondary sites correct
+  CHK_REPLICATION_MODE   - Sync mode (sync/syncmem recommended)
+  CHK_HADR_HOOKS         - HA/DR hooks configured
+  CHK_HANA_AUTOSTART     - Autostart disabled (Pacemaker manages)
+  CHK_SYSTEMD_SAP        - SAP systemd services correct
+
+COMMON ISSUES & SOLUTIONS
+-------------------------
+
+  1. System Replication Not Active
+     - Check: SAPHanaSR-showAttr
+     - Verify SR status: hdbnsutil -sr_state
+     - Check secondary registered: hdbnsutil -sr_register --help
+
+  2. Wrong Replication Mode (async)
+     - Risk: Data loss on failover
+     - Change to sync: hdbnsutil -sr_changemode --mode=sync
+
+  3. Multiple Primary Sites (Split-Brain)
+     - CRITICAL: Immediate attention required
+     - Check: SAPHanaSR-showAttr | grep -i prim
+     - May need manual intervention
+
+  4. HA/DR Hooks Not Configured
+     - Required for automatic failover
+     - Configure in global.ini: [ha_dr_provider_*]
+
+  5. Autostart Enabled
+     - Should be disabled when using Pacemaker
+     - Check: grep Autostart /usr/sap/<SID>/SYS/profile/*
+
+COMMANDS TO CHECK
+-----------------
+  # HANA SR status (run as <sid>adm)
+  SAPHanaSR-showAttr
+  hdbnsutil -sr_state
+
+  # Pacemaker HANA resources
+  pcs resource show SAPHana*
+  crm_mon -A1 | grep -i hana
+
+  # HANA processes
+  sapcontrol -nr <instance> -function GetProcessList
+
+DOCUMENTATION
+-------------
+  SAP HANA System Replication:
+    https://help.sap.com/docs/SAP_HANA_PLATFORM/6b94445c94ae495c83a19646e7c3fd56
+
+  SAP HANA HA/DR Providers:
+    https://help.sap.com/docs/SAP_HANA_PLATFORM/6b94445c94ae495c83a19646e7c3fd56/1367c8fdefaa4808a7485b09f7a62949.html
+
+  Red Hat SAP HANA HA:
+    https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux_for_sap_solutions/8/
+"""
+    }
+
+    if step == 'all':
+        for s in ['access', 'config', 'pacemaker', 'sap']:
+            print(suggestions.get(s, f"No suggestions available for '{s}'"))
+    else:
+        print(suggestions.get(step, f"No suggestions available for '{step}'"))
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='SAP Pacemaker Cluster Health Check Tool',
@@ -779,11 +1025,23 @@ Examples:
         help='Show detailed usage guide with examples and next steps'
     )
 
+    # Suggest option
+    parser.add_argument(
+        '--suggest',
+        choices=['access', 'config', 'pacemaker', 'sap', 'all'],
+        help='Show suggestions and documentation for a specific step'
+    )
+
     args = parser.parse_args()
 
     # Handle guide action
     if args.guide:
         print_guide()
+        sys.exit(0)
+
+    # Handle suggest action
+    if args.suggest:
+        print_suggestions(args.suggest)
         sys.exit(0)
 
     # Determine config directory
