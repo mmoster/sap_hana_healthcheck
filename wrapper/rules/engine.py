@@ -163,9 +163,12 @@ class RulesEngine:
         try:
             if node and method == 'ssh':
                 ssh_user = user or os.environ.get('USER', 'root')
-                full_cmd = f"ssh -o BatchMode=yes -o ConnectTimeout=10 {ssh_user}@{node} '{cmd}'"
+                # Escape single quotes in command: replace ' with '\''
+                escaped_cmd = cmd.replace("'", "'\"'\"'")
+                full_cmd = f"ssh -o BatchMode=yes -o ConnectTimeout=10 {ssh_user}@{node} '{escaped_cmd}'"
             elif node and method == 'ansible':
-                full_cmd = f"ansible {node} -m shell -a '{cmd}' -o"
+                escaped_cmd = cmd.replace("'", "'\"'\"'")
+                full_cmd = f"ansible {node} -m shell -a '{escaped_cmd}' -o"
             else:
                 full_cmd = cmd
 
