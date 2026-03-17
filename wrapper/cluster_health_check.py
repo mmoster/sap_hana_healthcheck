@@ -442,15 +442,18 @@ class ClusterHealthCheck:
 """)
             return
 
-        if self.all_results:
+        # Get results from rules engine if available
+        all_results = getattr(self.rules_engine, 'results', []) if self.rules_engine else []
+
+        if all_results:
             # Analyze results
-            critical = [r for r in self.all_results if hasattr(r, 'status') and
+            critical = [r for r in all_results if hasattr(r, 'status') and
                        str(r.status) == 'CheckStatus.FAILED' and
                        hasattr(r, 'severity') and str(r.severity) == 'Severity.CRITICAL']
-            warnings = [r for r in self.all_results if hasattr(r, 'status') and
+            warnings = [r for r in all_results if hasattr(r, 'status') and
                        str(r.status) == 'CheckStatus.FAILED' and
                        hasattr(r, 'severity') and str(r.severity) == 'Severity.WARNING']
-            skipped = [r for r in self.all_results if hasattr(r, 'status') and
+            skipped = [r for r in all_results if hasattr(r, 'status') and
                       str(r.status) == 'CheckStatus.SKIPPED']
 
             if critical:
