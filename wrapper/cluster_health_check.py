@@ -479,9 +479,10 @@ class ClusterHealthCheck:
 """)
 
         print("  Documentation:")
-        print("    SAP HANA SR: https://documentation.suse.com/sbp/sap/")
-        print("    Pacemaker:   https://clusterlabs.org/pacemaker/doc/")
-        print("    Red Hat HA:  https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/configuring_and_managing_high_availability_clusters/")
+        print("    SAP HANA Admin:  https://help.sap.com/docs/SAP_HANA_PLATFORM")
+        print("    SAP HANA SR:     https://help.sap.com/docs/SAP_HANA_PLATFORM/6b94445c94ae495c83a19646e7c3fd56")
+        print("    Red Hat HA:      https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/configuring_and_managing_high_availability_clusters/")
+        print("    Pacemaker:       https://clusterlabs.org/pacemaker/doc/")
 
 
 def print_guide():
@@ -594,14 +595,20 @@ TROUBLESHOOTING
 
 DOCUMENTATION
 -------------
-  SAP HANA System Replication:
-    https://documentation.suse.com/sbp/sap/
+  SAP HANA Platform:
+    https://help.sap.com/docs/SAP_HANA_PLATFORM
 
-  SUSE SAP Best Practices:
-    https://documentation.suse.com/sbp/sap/html/SLES4SAP-hana-sr-guide-PerfOpt-15/
+  SAP HANA System Replication:
+    https://help.sap.com/docs/SAP_HANA_PLATFORM/6b94445c94ae495c83a19646e7c3fd56
+
+  SAP HANA Administration Guide:
+    https://help.sap.com/docs/SAP_HANA_PLATFORM/6b94445c94ae495c83a19646e7c3fd56/330e5550b09d4f0f8b6cceb14a1f956d.html
 
   Red Hat HA Clusters:
     https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/configuring_and_managing_high_availability_clusters/
+
+  Red Hat SAP HANA HA:
+    https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux_for_sap_solutions/8/
 
   Pacemaker Documentation:
     https://clusterlabs.org/pacemaker/doc/
