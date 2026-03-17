@@ -23,6 +23,110 @@ Requirements:
 - For live checks: SSH access or Ansible configured
 - For offline analysis: SOSreport directories
 
+## Specifying Target Nodes
+
+**Important**: By default, the tool auto-discovers hosts from Ansible inventory. On an Ansible master server with hundreds of hosts, this may include many systems that are not part of your SAP cluster. You should explicitly specify your target nodes using one of the methods below.
+
+### Method 1: Custom Hosts File (Recommended)
+
+Create a simple text file containing only your SAP cluster nodes (one hostname per line):
+
+```bash
+# Create hosts file with your cluster nodes
+cat > my_cluster.txt << EOF
+hana01
+hana02
+hana03
+EOF
+
+# Run health check with custom hosts file
+cd wrapper
+./cluster_health_check.py --hosts-file my_cluster.txt
+```
+
+This completely bypasses Ansible inventory discovery and only checks the specified nodes.
+
+### Method 2: Deploy with Explicit Hosts
+
+When using the deploy script, specify hosts directly on the command line:
+
+```bash
+# Deploy with specific hosts - only these will be checked
+./deploy.sh /opt/sap_cluster_check hana01 hana02
+
+# The hosts are written to hosts.txt in the target directory
+cd /opt/sap_cluster_check
+./run_discovery.sh
+```
+
+### Method 3: Edit hosts.txt After Deployment
+
+Deploy first, then manually edit the hosts file:
+
+```bash
+# Deploy without hosts
+./deploy.sh /opt/sap_cluster_check
+
+# Edit hosts.txt to add your nodes
+cat > /opt/sap_cluster_check/hosts.txt << EOF
+hana01
+hana02
+EOF
+
+# Run discovery
+cd /opt/sap_cluster_check
+./run_discovery.sh
+```
+
+### Method 4: Environment Variable
+
+Set the `ANSIBLE_INVENTORY` environment variable to point to a custom inventory file containing only your cluster nodes:
+
+```bash
+export ANSIBLE_INVENTORY=/path/to/my_sap_cluster_inventory
+cd wrapper
+./cluster_health_check.py
+```
+
+### Method 5: Single Host Discovery
+
+To check only a single host (useful for testing):
+
+```bash
+cd /opt/sap_cluster_check
+./run_discovery.sh --host hana01
+```
+
+### Hosts File Format
+
+The hosts file is a simple text file with one hostname or IP address per line:
+
+```
+# Comments start with #
+hana01.example.com
+hana02.example.com
+192.168.1.100
+
+# Empty lines are ignored
+hana03
+```
+
+### Verifying Your Configuration
+
+Before running the full health check, verify which nodes will be discovered:
+
+```bash
+# Show current configuration
+cd wrapper
+./cluster_health_check.py --show-config
+
+# Run only access discovery to test connectivity
+./cluster_health_check.py --access-only
+
+# Force rediscovery if you changed the hosts file
+./cluster_health_check.py --force --access-only
+```
+
 ## Quick Start
 
 ### Option 1: Deploy Discovery Tool (empfohlen für Tests)
