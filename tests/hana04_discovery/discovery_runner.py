@@ -15,8 +15,33 @@ import re
 from pathlib import Path
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Any, Optional, Tuple
+
+# Python 3.6 compatibility for dataclasses
+try:
+    from dataclasses import dataclass, field, asdict
+except ImportError:
+    # Fallback for Python < 3.7
+    def field(default=None, default_factory=None):
+        return default_factory() if default_factory else default
+
+    def dataclass(cls):
+        """Simple dataclass decorator fallback"""
+        def __init__(self, **kwargs):
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+            if hasattr(cls, '__annotations__'):
+                for name, _ in cls.__annotations__.items():
+                    if not hasattr(self, name):
+                        default = getattr(cls, name, None)
+                        setattr(self, name, default)
+        cls.__init__ = __init__
+        return cls
+
+    def asdict(obj):
+        if hasattr(obj, '__dict__'):
+            return {k: v for k, v in obj.__dict__.items() if not k.startswith('_')}
+        return obj
 
 # Pfad zum Wrapper-Modul hinzufügen
 SCRIPT_DIR = Path(__file__).parent.resolve()
@@ -29,11 +54,11 @@ from discover_access import AccessDiscovery
 @dataclass
 class DiscoveryResult:
     """Ergebnis einer einzelnen Discovery"""
-    id: str
-    description: str
-    success: bool
-    raw_output: str
-    parsed_value: Any
+    id: str = None
+    description: str = None
+    success: bool = False
+    raw_output: str = None
+    parsed_value: Any = None
     error: Optional[str] = None
     timestamp: Optional[str] = None
 
@@ -41,11 +66,17 @@ class DiscoveryResult:
 @dataclass
 class DiscoveredData:
     """Gesammelte Discovery-Daten für einen Host"""
-    hostname: str
-    access_method: str
-    discovery_timestamp: str
-    groups: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    errors: List[str] = field(default_factory=list)
+    hostname: str = None
+    access_method: str = None
+    discovery_timestamp: str = None
+    groups: Dict[str, Dict[str, Any]] = None
+    errors: List[str] = None
+
+    def __post_init__(self):
+        if self.groups is None:
+            self.groups = {}
+        if self.errors is None:
+            self.errors = []
 
 
 class DiscoveryRunner:

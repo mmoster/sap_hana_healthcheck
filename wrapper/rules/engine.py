@@ -11,10 +11,30 @@ import re
 import yaml
 import subprocess
 from pathlib import Path
-from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Any, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import Enum
+
+# Python 3.6 compatibility for dataclasses
+try:
+    from dataclasses import dataclass, field
+except ImportError:
+    # Fallback for Python < 3.7
+    def field(default=None, default_factory=None):
+        return default_factory() if default_factory else default
+
+    def dataclass(cls):
+        """Simple dataclass decorator fallback"""
+        def __init__(self, **kwargs):
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+            if hasattr(cls, '__annotations__'):
+                for name, _ in cls.__annotations__.items():
+                    if not hasattr(self, name):
+                        default = getattr(cls, name, None)
+                        setattr(self, name, default)
+        cls.__init__ = __init__
+        return cls
 
 
 class Severity(Enum):
@@ -35,28 +55,36 @@ class CheckStatus(Enum):
 @dataclass
 class CheckResult:
     """Result of a single health check."""
-    check_id: str
-    description: str
-    status: CheckStatus
-    severity: Severity
-    message: str
-    details: Dict[str, Any] = field(default_factory=dict)
+    check_id: str = None
+    description: str = None
+    status: CheckStatus = None
+    severity: Severity = None
+    message: str = None
+    details: Dict[str, Any] = None
     node: Optional[str] = None
+
+    def __post_init__(self):
+        if self.details is None:
+            self.details = {}
 
 
 @dataclass
 class RuleDefinition:
     """Parsed rule definition from YAML."""
-    check_id: str
-    version: str
-    severity: str
-    description: str
-    enabled: bool
-    source_definitions: Dict[str, Any]
-    parser: Dict[str, Any]
-    validation_logic: Dict[str, Any]
+    check_id: str = None
+    version: str = None
+    severity: str = None
+    description: str = None
+    enabled: bool = True
+    source_definitions: Dict[str, Any] = None
+    parser: Dict[str, Any] = None
+    validation_logic: Dict[str, Any] = None
     topology_filter: Optional[str] = None
-    raw_yaml: Dict[str, Any] = field(default_factory=dict)
+    raw_yaml: Dict[str, Any] = None
+
+    def __post_init__(self):
+        if self.raw_yaml is None:
+            self.raw_yaml = {}
 
 
 class RulesEngine:

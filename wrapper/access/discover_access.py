@@ -18,15 +18,44 @@ import argparse
 import re
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Optional, Any
 from datetime import datetime
+
+# Python 3.6 compatibility for dataclasses
+try:
+    from dataclasses import dataclass, field, asdict
+except ImportError:
+    # Fallback for Python < 3.7
+    def field(default=None, default_factory=None):
+        return default_factory() if default_factory else default
+
+    def dataclass(cls):
+        """Simple dataclass decorator fallback"""
+        original_init = cls.__init__ if hasattr(cls, '__init__') else None
+
+        def __init__(self, **kwargs):
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+            # Set defaults from class annotations
+            if hasattr(cls, '__annotations__'):
+                for name, _ in cls.__annotations__.items():
+                    if not hasattr(self, name):
+                        default = getattr(cls, name, None)
+                        setattr(self, name, default)
+        cls.__init__ = __init__
+        return cls
+
+    def asdict(obj):
+        """Simple asdict fallback"""
+        if hasattr(obj, '__dict__'):
+            return {k: v for k, v in obj.__dict__.items() if not k.startswith('_')}
+        return obj
 
 
 @dataclass
 class NodeAccess:
     """Represents access information for a single node."""
-    hostname: str
+    hostname: str = None
     ssh_reachable: bool = False
     ssh_user: Optional[str] = None
     ansible_reachable: bool = False
@@ -44,9 +73,13 @@ class AccessConfig:
     ansible_inventory_path: Optional[str] = None
     sosreport_directory: Optional[str] = None
     hosts_file: Optional[str] = None
-    nodes: Dict[str, dict] = field(default_factory=dict)
+    nodes: Dict[str, dict] = None
     discovery_timestamp: Optional[str] = None
     discovery_complete: bool = False
+
+    def __post_init__(self):
+        if self.nodes is None:
+            self.nodes = {}
 
 
 class AccessDiscovery:

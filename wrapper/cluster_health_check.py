@@ -19,7 +19,16 @@ import argparse
 import yaml
 from pathlib import Path
 from datetime import datetime
-from dataclasses import asdict
+
+try:
+    from dataclasses import asdict
+except ImportError:
+    # Python < 3.7 fallback
+    def asdict(obj):
+        """Simple fallback for dataclasses.asdict"""
+        if hasattr(obj, '__dict__'):
+            return {k: v for k, v in obj.__dict__.items() if not k.startswith('_')}
+        return obj
 
 # Add modules to path
 SCRIPT_DIR = Path(__file__).parent.resolve()

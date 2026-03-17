@@ -18,7 +18,7 @@ cd sap_hana_healthcheck
 ```
 
 Requirements:
-- Python 3.8+
+- Python 3.6+ (tested with 3.6, 3.8, 3.14)
 - PyYAML (`pip install pyyaml`)
 - For live checks: SSH access or Ansible configured
 - For offline analysis: SOSreport directories
