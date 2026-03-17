@@ -417,10 +417,206 @@ class ClusterHealthCheck:
         failed = [step for step, success in results.items() if not success]
         if failed:
             print(f"[WARNING] Failed steps: {', '.join(failed)}")
+
+        # Show next steps
+        self._print_next_steps(results)
+
+        if failed:
             return 1
 
         print("[OK] All checks passed")
         return 0
+
+    def _print_next_steps(self, results: dict):
+        """Print suggested next steps based on results."""
+        print("\n" + "-" * 63)
+        print(" Next Steps")
+        print("-" * 63)
+
+        # Check what was done and suggest next actions
+        if not results.get('access'):
+            print("""
+  Access discovery failed. Try:
+    ./cluster_health_check.py --debug hana01    # Debug with specific node
+    ./cluster_health_check.py -s /path/to/sos   # Use SOSreports instead
+""")
+            return
+
+        if self.all_results:
+            # Analyze results
+            critical = [r for r in self.all_results if hasattr(r, 'status') and
+                       str(r.status) == 'CheckStatus.FAILED' and
+                       hasattr(r, 'severity') and str(r.severity) == 'Severity.CRITICAL']
+            warnings = [r for r in self.all_results if hasattr(r, 'status') and
+                       str(r.status) == 'CheckStatus.FAILED' and
+                       hasattr(r, 'severity') and str(r.severity) == 'Severity.WARNING']
+            skipped = [r for r in self.all_results if hasattr(r, 'status') and
+                      str(r.status) == 'CheckStatus.SKIPPED']
+
+            if critical:
+                print(f"""
+  CRITICAL issues found ({len(critical)}). Review:
+    - Check the report file for details
+    - Address STONITH/fencing issues first
+    - Verify quorum configuration
+""")
+
+            if warnings:
+                print(f"  Warnings found ({len(warnings)}). Review report for details.")
+
+            if skipped:
+                print(f"  Skipped checks ({len(skipped)}). Some commands may not be available.")
+
+        print("""
+  Common next steps:
+    ./cluster_health_check.py --show-config     # View current config
+    ./cluster_health_check.py -f hana01         # Force re-discovery
+    ./cluster_health_check.py --list-rules      # List all health checks
+    ./cluster_health_check.py --guide           # Show detailed usage guide
+""")
+
+        print("  Documentation:")
+        print("    SAP HANA SR: https://documentation.suse.com/sbp/sap/")
+        print("    Pacemaker:   https://clusterlabs.org/pacemaker/doc/")
+        print("    Red Hat HA:  https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/configuring_and_managing_high_availability_clusters/")
+
+
+def print_guide():
+    """Print detailed usage guide."""
+    print("""
+===============================================================================
+                    SAP Pacemaker Cluster Health Check - Guide
+===============================================================================
+
+QUICK START
+-----------
+  1. Check a live cluster (auto-discovers all members):
+     ./cluster_health_check.py hana01
+
+  2. Analyze SOSreports offline:
+     ./cluster_health_check.py -s /path/to/sosreports/
+
+  3. Show current configuration:
+     ./cluster_health_check.py --show-config
+
+WORKFLOW
+--------
+  Step 1: ACCESS DISCOVERY
+    The tool first discovers how to access your nodes:
+    - SSH direct access (preferred)
+    - Ansible inventory
+    - SOSreport directories
+
+    Example: ./cluster_health_check.py --access-only hana01
+
+  Step 2: CLUSTER DISCOVERY
+    From the first reachable node, discovers all cluster members:
+    - Uses: crm_node -l, pcs status nodes, corosync-cmapctl
+    - Saves cluster name for future runs
+
+    Example: ./cluster_health_check.py -C mycluster  # Use saved cluster
+
+  Step 3: HEALTH CHECKS
+    Runs all CHK_*.yaml rules against discovered nodes:
+    - Cluster configuration (quorum, fencing, resources)
+    - Pacemaker status (nodes, resources, failures)
+    - SAP-specific (HANA SR status, hooks, systemd)
+
+    Example: ./cluster_health_check.py --list-rules  # See all checks
+
+  Step 4: REPORT GENERATION
+    Generates YAML report with all findings:
+    - Critical failures (must fix)
+    - Warnings (should review)
+    - Passed checks
+
+COMMON USE CASES
+----------------
+  Live cluster check:
+    ./cluster_health_check.py hana01 hana02
+
+  SOSreport analysis (auto-extracts .tar.xz):
+    ./cluster_health_check.py -s /path/to/sosreports/
+
+  Debug mode (verbose output):
+    ./cluster_health_check.py -d hana01
+
+  Use saved cluster:
+    ./cluster_health_check.py -C production_cluster
+
+  Skip specific steps:
+    ./cluster_health_check.py --skip sap report hana01
+
+  Force re-discovery:
+    ./cluster_health_check.py -f hana01
+
+  Ansible inventory group:
+    ./cluster_health_check.py -g sap_hana_cluster
+
+OPTIONS REFERENCE
+-----------------
+  Input Sources:
+    <hosts>           Hostnames to check (auto-discovers cluster)
+    -H, --hosts-file  File with hostnames (one per line)
+    -s, --sosreport   Directory with SOSreport archives
+    -g, --group       Ansible inventory group filter
+    -C, --cluster     Use saved cluster name
+
+  Actions:
+    -a, --access-only  Only run access discovery
+    -S, --show-config  Show current configuration
+    -D, --delete-config Delete config (fresh start)
+    -L, --list-rules   List available health checks
+    -G, --guide        Show this guide
+
+  Modifiers:
+    -d, --debug       Debug mode (verbose)
+    -f, --force       Force re-discovery
+    -w, --workers     Parallel workers (default: 10)
+    -r, --rules-path  Custom rules directory
+
+TROUBLESHOOTING
+---------------
+  No SSH access:
+    - Check SSH keys: ssh-copy-id root@hana01
+    - Try: ./cluster_health_check.py -d hana01  # Debug output
+
+  Commands timing out:
+    - Some SAP commands are slow, tool uses 15s timeout
+    - Use SOSreports for offline analysis
+
+  Wrong nodes discovered:
+    - Specify nodes explicitly: ./cluster_health_check.py hana01 hana02
+    - Use hosts file: ./cluster_health_check.py -H my_hosts.txt
+
+DOCUMENTATION
+-------------
+  SAP HANA System Replication:
+    https://documentation.suse.com/sbp/sap/
+
+  SUSE SAP Best Practices:
+    https://documentation.suse.com/sbp/sap/html/SLES4SAP-hana-sr-guide-PerfOpt-15/
+
+  Red Hat HA Clusters:
+    https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/configuring_and_managing_high_availability_clusters/
+
+  Pacemaker Documentation:
+    https://clusterlabs.org/pacemaker/doc/
+
+  ClusterLabs Wiki:
+    https://wiki.clusterlabs.org/
+
+HEALTH CHECK RULES
+------------------
+  Rules are defined in YAML files (CHK_*.yaml). Each rule specifies:
+    - Command to run (live_cmd) or SOSreport path (sos_path)
+    - Parser to extract values (regex patterns)
+    - Validation logic (expectations)
+
+  Custom rules: ./cluster_health_check.py -r /path/to/my_rules/
+
+===============================================================================
+""")
 
 
 def main():
@@ -524,7 +720,19 @@ Examples:
         help='Enable debug mode (show config files used and step progress)'
     )
 
+    # Guide option
+    parser.add_argument(
+        '--guide', '-G',
+        action='store_true',
+        help='Show detailed usage guide with examples and next steps'
+    )
+
     args = parser.parse_args()
+
+    # Handle guide action
+    if args.guide:
+        print_guide()
+        sys.exit(0)
 
     # Determine config directory
     config_dir = Path(args.config_dir) if args.config_dir else SCRIPT_DIR
