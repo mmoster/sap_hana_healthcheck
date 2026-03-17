@@ -54,11 +54,18 @@ class DiscoveryRunner:
     SSH_TIMEOUT = 30
     MAX_WORKERS = 5
 
-    def __init__(self, rules_dir: str, config_dir: str = "."):
+    def __init__(self, rules_dir: str, config_dir: str = ".", debug: bool = False):
         self.rules_dir = Path(rules_dir)
         self.config_dir = Path(config_dir)
         self.rules: Dict[str, Dict] = {}  # group -> rules
         self.results: Dict[str, DiscoveredData] = {}  # hostname -> data
+        self.debug = debug
+
+    def _debug_print(self, message: str):
+        """Print debug message if debug mode is enabled."""
+        if self.debug:
+            timestamp = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+            print(f"  [DEBUG {timestamp}] {message}")
 
     def load_rules(self) -> Dict[str, Dict]:
         """Lädt alle Discovery-Regeln aus YAML-Dateien"""
@@ -72,6 +79,10 @@ class DiscoveryRunner:
         print(f"\n{'='*60}")
         print(f" Loading Discovery Rules from {self.rules_dir}")
         print(f"{'='*60}")
+
+        self._debug_print(f"Rules directory: {self.rules_dir}")
+        self._debug_print(f"Config directory: {self.config_dir}")
+        self._debug_print(f"Found {len(rule_files)} rule files")
 
         for rule_file in rule_files:
             try:
@@ -186,6 +197,8 @@ class DiscoveryRunner:
         cmd = discovery.get('live_cmd', '')
         parser_config = discovery.get('parser', {'type': 'raw'})
 
+        self._debug_print(f"Running {disc_id} on {host}: {cmd[:50]}...")
+
         if not cmd:
             return DiscoveryResult(
                 id=disc_id,
@@ -255,6 +268,9 @@ class DiscoveryRunner:
         print(f"{'='*60}")
         print(f" Hosts: {len(hosts)}")
         print(f" Groups: {', '.join(groups_to_run)}")
+
+        self._debug_print(f"Total hosts: {list(hosts.keys())}")
+        self._debug_print(f"Groups to run: {groups_to_run}")
 
         for hostname, node_info in hosts.items():
             method = node_info.get('preferred_method')
@@ -370,6 +386,7 @@ Examples:
   %(prog)s --groups system_info         Run only system_info group
   %(prog)s --list-rules                 List available rules
   %(prog)s --host hana04                Run only on specific host
+  %(prog)s --debug                      Run with debug output
 """
     )
 
@@ -416,14 +433,31 @@ Examples:
         action='store_true',
         help='Show collected data at the end'
     )
+    parser.add_argument(
+        '--debug', '-d',
+        action='store_true',
+        help='Enable debug mode (show config files used and step progress)'
+    )
 
     args = parser.parse_args()
 
     # Discovery Runner initialisieren
     runner = DiscoveryRunner(
         rules_dir=args.rules_dir,
-        config_dir=args.config_dir
+        config_dir=args.config_dir,
+        debug=args.debug
     )
+
+    # Debug banner
+    if args.debug:
+        print(f"\n{'='*60}")
+        print(" DEBUG MODE ENABLED - Configuration Files")
+        print(f"{'='*60}")
+        print(f"  Rules directory:     {args.rules_dir}")
+        print(f"  Config directory:    {args.config_dir}")
+        print(f"  Hosts file:          {args.hosts_file}")
+        print(f"  Access config:       {Path(args.config_dir) / 'cluster_access_config.yaml'}")
+        print()
 
     # Regeln laden
     runner.load_rules()

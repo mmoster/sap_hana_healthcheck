@@ -127,6 +127,27 @@ cd wrapper
 ./cluster_health_check.py --force --access-only
 ```
 
+### Debug Mode
+
+Use `--debug` or `-d` to see detailed information about config files being used and step progress:
+
+```bash
+# Run with debug output
+cd wrapper
+./cluster_health_check.py --debug
+
+# For discovery runner
+cd /opt/sap_cluster_check
+./run_discovery.sh --debug
+```
+
+Debug mode shows:
+- Config directory and file paths
+- Rules path and loaded rule count
+- Hosts file location
+- Current step being executed
+- Individual check execution progress with timestamps
+
 ## Quick Start
 
 ### Option 1: Deploy Discovery Tool (empfohlen für Tests)
@@ -187,6 +208,7 @@ Options:
   -w, --workers         Number of parallel workers (default: 10)
   -r, --rules-path      Path to CHK_*.yaml rules directory
   -L, --list-rules      List available health check rules and exit
+  -d, --debug           Enable debug mode (show config files and step progress)
   --skip                Skip specific steps (access, config, pacemaker, sap, report)
 ```
 

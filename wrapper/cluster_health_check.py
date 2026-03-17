@@ -36,7 +36,8 @@ class ClusterHealthCheck:
     DEFAULT_RULES_PATH = "/home/mmoster/projects/cluster_health_check/sap_hana_healthcheck/rules"
 
     def __init__(self, config_dir: str = None, sosreport_dir: str = None,
-                 hosts_file: str = None, workers: int = 10, rules_path: str = None):
+                 hosts_file: str = None, workers: int = 10, rules_path: str = None,
+                 debug: bool = False):
         self.config_dir = Path(config_dir) if config_dir else SCRIPT_DIR
         self.sosreport_dir = sosreport_dir
         self.hosts_file = hosts_file
@@ -45,6 +46,13 @@ class ClusterHealthCheck:
         self.access_config = None
         self.rules_engine = None
         self.check_results = []
+        self.debug = debug
+
+    def _debug_print(self, message: str):
+        """Print debug message if debug mode is enabled."""
+        if self.debug:
+            timestamp = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+            print(f"  [DEBUG {timestamp}] {message}")
 
     def print_banner(self):
         """Print the tool banner."""
@@ -54,6 +62,17 @@ class ClusterHealthCheck:
 ║       RHEL / SUSE Linux Enterprise                            ║
 ╚═══════════════════════════════════════════════════════════════╝
 """)
+        if self.debug:
+            print("=" * 63)
+            print(" DEBUG MODE ENABLED - Configuration Files")
+            print("=" * 63)
+            print(f"  Config directory:    {self.config_dir}")
+            print(f"  Access config file:  {self.config_dir / AccessDiscovery.CONFIG_FILE}")
+            print(f"  Rules path:          {self.rules_path}")
+            print(f"  Hosts file:          {self.hosts_file or '(auto-discover from Ansible)'}")
+            print(f"  SOSreport dir:       {self.sosreport_dir or '(not set)'}")
+            print(f"  Workers:             {self.workers}")
+            print()
 
     def step_access_discovery(self, force: bool = False) -> bool:
         """
@@ -64,6 +83,10 @@ class ClusterHealthCheck:
         print(" STEP 1: Access Discovery")
         print("=" * 63)
 
+        self._debug_print("Starting access discovery...")
+        self._debug_print(f"Config file: {self.config_dir / AccessDiscovery.CONFIG_FILE}")
+        self._debug_print(f"Force rediscover: {force}")
+
         discovery = AccessDiscovery(
             config_dir=str(self.config_dir),
             sosreport_dir=self.sosreport_dir,
@@ -72,7 +95,12 @@ class ClusterHealthCheck:
         )
         discovery.MAX_WORKERS = self.workers
 
+        self._debug_print(f"Hosts file: {self.hosts_file or 'auto-discover'}")
+        self._debug_print(f"SOSreport dir: {self.sosreport_dir or 'not set'}")
+
         self.access_config = discovery.discover_all()
+
+        self._debug_print(f"Discovery complete, found {len(self.access_config.nodes)} node(s)")
 
         # Check if we have any accessible nodes
         accessible_nodes = [
@@ -94,12 +122,14 @@ class ClusterHealthCheck:
     def _load_rules_engine(self):
         """Initialize and load the rules engine."""
         if self.rules_engine is None:
+            self._debug_print(f"Loading rules engine from: {self.rules_path}")
             access_dict = asdict(self.access_config) if self.access_config else {}
             self.rules_engine = RulesEngine(
                 rules_path=self.rules_path,
                 access_config=access_dict
             )
             self.rules_engine.load_rules()
+            self._debug_print(f"Loaded {len(self.rules_engine.rules)} rules")
 
     def _filter_rules_by_prefix(self, prefixes: list) -> list:
         """Filter loaded rules by check_id prefix."""
@@ -116,6 +146,7 @@ class ClusterHealthCheck:
         print(" STEP 2: Cluster Configuration Check")
         print("=" * 63)
 
+        self._debug_print("Starting cluster configuration checks...")
         self._load_rules_engine()
 
         # Filter relevant checks
@@ -125,16 +156,21 @@ class ClusterHealthCheck:
 
         rules_to_run = [r for r in self.rules_engine.rules if r.check_id in config_checks]
 
+        self._debug_print(f"Checks to run: {[r.check_id for r in rules_to_run]}")
+
         if not rules_to_run:
             print("[SKIP] No cluster configuration checks found")
             return True
 
         nodes = self.access_config.nodes if self.access_config else {}
+        self._debug_print(f"Target nodes: {list(nodes.keys())}")
         print(f"Running {len(rules_to_run)} cluster configuration checks...")
 
         for rule in rules_to_run:
+            self._debug_print(f"Executing: {rule.check_id}")
             results = self.rules_engine.run_check(rule, nodes)
             self.check_results.extend(results)
+            self._debug_print(f"Completed: {rule.check_id} ({len(results)} results)")
 
         failed = [r for r in self.check_results if r.status == CheckStatus.FAILED
                   and r.check_id in config_checks]
@@ -150,6 +186,7 @@ class ClusterHealthCheck:
         print(" STEP 3: Pacemaker/Corosync Check")
         print("=" * 63)
 
+        self._debug_print("Starting Pacemaker/Corosync checks...")
         self._load_rules_engine()
 
         pacemaker_checks = ['CHK_STONITH_CONFIG', 'CHK_RESOURCE_STATUS', 'CHK_RESOURCE_FAILURES',
@@ -157,16 +194,21 @@ class ClusterHealthCheck:
 
         rules_to_run = [r for r in self.rules_engine.rules if r.check_id in pacemaker_checks]
 
+        self._debug_print(f"Checks to run: {[r.check_id for r in rules_to_run]}")
+
         if not rules_to_run:
             print("[SKIP] No Pacemaker checks found")
             return True
 
         nodes = self.access_config.nodes if self.access_config else {}
+        self._debug_print(f"Target nodes: {list(nodes.keys())}")
         print(f"Running {len(rules_to_run)} Pacemaker/Corosync checks...")
 
         for rule in rules_to_run:
+            self._debug_print(f"Executing: {rule.check_id}")
             results = self.rules_engine.run_check(rule, nodes)
             self.check_results.extend(results)
+            self._debug_print(f"Completed: {rule.check_id} ({len(results)} results)")
 
         failed = [r for r in self.check_results if r.status == CheckStatus.FAILED
                   and r.check_id in pacemaker_checks]
@@ -182,6 +224,7 @@ class ClusterHealthCheck:
         print(" STEP 4: SAP-Specific Checks")
         print("=" * 63)
 
+        self._debug_print("Starting SAP-specific checks...")
         self._load_rules_engine()
 
         sap_checks = ['CHK_HANA_SR_STATUS', 'CHK_REPLICATION_MODE', 'CHK_HADR_HOOKS',
@@ -189,16 +232,21 @@ class ClusterHealthCheck:
 
         rules_to_run = [r for r in self.rules_engine.rules if r.check_id in sap_checks]
 
+        self._debug_print(f"Checks to run: {[r.check_id for r in rules_to_run]}")
+
         if not rules_to_run:
             print("[SKIP] No SAP checks found")
             return True
 
         nodes = self.access_config.nodes if self.access_config else {}
+        self._debug_print(f"Target nodes: {list(nodes.keys())}")
         print(f"Running {len(rules_to_run)} SAP-specific checks...")
 
         for rule in rules_to_run:
+            self._debug_print(f"Executing: {rule.check_id}")
             results = self.rules_engine.run_check(rule, nodes)
             self.check_results.extend(results)
+            self._debug_print(f"Completed: {rule.check_id} ({len(results)} results)")
 
         failed = [r for r in self.check_results if r.status == CheckStatus.FAILED
                   and r.check_id in sap_checks]
@@ -212,6 +260,9 @@ class ClusterHealthCheck:
         print("\n" + "=" * 63)
         print(" STEP 5: Health Check Report")
         print("=" * 63)
+
+        self._debug_print("Generating report...")
+        self._debug_print(f"Total results collected: {len(self.check_results)}")
 
         if not self.check_results:
             print("[INFO] No check results to report")
@@ -348,6 +399,7 @@ Examples:
   %(prog)s --delete-config          Delete config and restart
   %(prog)s -H hosts.txt             Use custom hosts file
   %(prog)s -s /path/to/sosreports   Use SOSreport directory
+  %(prog)s --debug                  Run with debug output (shows config files and progress)
         """
     )
 
@@ -414,6 +466,13 @@ Examples:
         help='Skip specific steps'
     )
 
+    # Debug option
+    parser.add_argument(
+        '--debug', '-d',
+        action='store_true',
+        help='Enable debug mode (show config files used and step progress)'
+    )
+
     args = parser.parse_args()
 
     # Determine config directory
@@ -452,7 +511,8 @@ Examples:
         sosreport_dir=args.sosreport_dir,
         hosts_file=args.hosts_file,
         workers=args.workers,
-        rules_path=args.rules_path
+        rules_path=args.rules_path,
+        debug=args.debug
     )
 
     try:
