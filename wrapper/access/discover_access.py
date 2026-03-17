@@ -568,6 +568,8 @@ class AccessDiscovery:
             sosreports = self.discover_sosreports()
             if sosreports:
                 print(f"\n[INFO] SOSreport mode: analyzing only nodes with SOSreports")
+                # Clear old nodes - only analyze SOSreport nodes
+                self.config.nodes = {}
                 for hostname, path in sosreports.items():
                     all_hosts[hostname] = {'ansible_info': None, 'sosreport_path': path}
                 # Skip all other discovery - go straight to access check
@@ -590,16 +592,22 @@ class AccessDiscovery:
                 print(f"\n=== Using saved cluster: {self.cluster_name} ===")
                 print(f"  Nodes: {', '.join(file_hosts)}")
                 print(f"  Discovered from: {cluster_info.get('discovered_from', 'unknown')}")
+                # Clear old nodes - only check this cluster's nodes
+                self.config.nodes = {}
             else:
                 print(f"\n[WARNING] Cluster '{self.cluster_name}' not found in config")
                 print(f"  Known clusters: {', '.join(self.config.clusters.keys()) or '(none)'}")
                 print(f"  Run with a node name first to discover the cluster")
 
-        # 1. Get hosts from file/command line
+        # 2. Get hosts from file/command line
         if not file_hosts:
             file_hosts = self.get_hosts_from_file()
+            if file_hosts:
+                # Hosts specified on command line - clear old nodes, only check these
+                print(f"\n[INFO] Host mode: analyzing only specified hosts")
+                self.config.nodes = {}
 
-        # 2. If hosts specified, try to discover cluster members from first reachable host
+        # 3. If hosts specified, try to discover cluster members from first reachable host
         if file_hosts and not self.cluster_name:
             if self.debug:
                 print(f"  [DEBUG] Hosts specified, attempting cluster auto-discovery")
@@ -721,16 +729,78 @@ class AccessDiscovery:
 
 
 def show_config(config_path: Path):
-    """Display the current configuration file contents."""
+    """Display the current configuration in a user-friendly format."""
     if not config_path.exists():
         print(f"No configuration file found at {config_path}")
+        print("\nRun discovery first:")
+        print("  ./cluster_health_check.py hana01")
         return False
 
-    print("\n" + "=" * 60)
-    print(f"Configuration File: {config_path}")
-    print("=" * 60)
     with open(config_path, 'r') as f:
-        print(f.read())
+        config = yaml.safe_load(f)
+
+    print("\n" + "=" * 60)
+    print(" SAP Cluster Health Check - Configuration")
+    print("=" * 60)
+    print(f"Config file: {config_path}")
+
+    # Show clusters prominently
+    clusters = config.get('clusters', {})
+    if clusters:
+        print("\n--- Discovered Clusters ---")
+        for name, info in clusters.items():
+            nodes = info.get('nodes', [])
+            discovered_from = info.get('discovered_from', 'unknown')
+            print(f"\n  Cluster: {name}")
+            print(f"    Nodes: {', '.join(nodes)}")
+            print(f"    Discovered from: {discovered_from}")
+            print(f"\n    To check this cluster:")
+            print(f"      ./cluster_health_check.py -C {name}")
+    else:
+        print("\n[INFO] No clusters discovered yet")
+        print("  Run: ./cluster_health_check.py hana01")
+
+    # Show node summary
+    nodes = config.get('nodes', {})
+    if nodes:
+        print(f"\n--- All Discovered Nodes ({len(nodes)}) ---")
+        accessible = [n for n, info in nodes.items() if info.get('preferred_method')]
+        no_access = [n for n, info in nodes.items() if not info.get('preferred_method')]
+
+        if accessible:
+            print(f"\n  Accessible ({len(accessible)}):")
+            for name in sorted(accessible)[:10]:  # Show first 10
+                info = nodes[name]
+                method = info.get('preferred_method', 'none')
+                print(f"    {name}: {method}")
+            if len(accessible) > 10:
+                print(f"    ... and {len(accessible) - 10} more")
+
+        if no_access:
+            print(f"\n  No access ({len(no_access)}): {', '.join(sorted(no_access)[:5])}", end='')
+            if len(no_access) > 5:
+                print(f" ... and {len(no_access) - 5} more")
+            else:
+                print()
+
+    # Show other config
+    if config.get('sosreport_directory'):
+        print(f"\n--- SOSreport Directory ---")
+        print(f"  {config['sosreport_directory']}")
+
+    if config.get('ansible_inventory_path'):
+        print(f"\n--- Ansible Inventory ---")
+        print(f"  Path: {config['ansible_inventory_path']}")
+        print(f"  Source: {config.get('ansible_inventory_source', 'unknown')}")
+
+    print("\n--- Quick Commands ---")
+    if clusters:
+        first_cluster = list(clusters.keys())[0]
+        print(f"  Check cluster:    ./cluster_health_check.py -C {first_cluster}")
+    print("  Force rediscover: ./cluster_health_check.py -f hana01")
+    print("  Delete config:    ./cluster_health_check.py -D")
+    print("  Show guide:       ./cluster_health_check.py --guide")
+
     return True
 
 
