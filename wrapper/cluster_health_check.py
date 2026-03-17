@@ -101,7 +101,8 @@ class ClusterHealthCheck:
             config_dir=str(self.config_dir),
             sosreport_dir=self.sosreport_dir,
             hosts_file=self.hosts_file,
-            force_rediscover=force
+            force_rediscover=force,
+            debug=self.debug
         )
         discovery.MAX_WORKERS = self.workers
 

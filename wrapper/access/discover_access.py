@@ -96,12 +96,14 @@ class AccessDiscovery:
     MAX_WORKERS = 10
 
     def __init__(self, config_dir: str = ".", sosreport_dir: Optional[str] = None,
-                 hosts_file: Optional[str] = None, force_rediscover: bool = False):
+                 hosts_file: Optional[str] = None, force_rediscover: bool = False,
+                 debug: bool = False):
         self.config_dir = Path(config_dir)
         self.config_path = self.config_dir / self.CONFIG_FILE
         self.sosreport_dir = sosreport_dir
         self.hosts_file = hosts_file
         self.force_rediscover = force_rediscover
+        self.debug = debug
         self.config = self._load_or_create_config()
 
     def _load_or_create_config(self) -> AccessConfig:
@@ -293,10 +295,14 @@ class AccessDiscovery:
                 result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=self.SSH_TIMEOUT + 2)
                 if result.returncode == 0 and "ok" in result.stdout:
                     return True, try_user
+                elif self.debug:
+                    print(f"    [DEBUG] SSH {try_user}@{hostname} failed: {result.stderr.strip()[:60]}")
             except subprocess.TimeoutExpired:
-                pass
-            except Exception:
-                pass
+                if self.debug:
+                    print(f"    [DEBUG] SSH {try_user}@{hostname} timed out")
+            except Exception as e:
+                if self.debug:
+                    print(f"    [DEBUG] SSH {try_user}@{hostname} error: {e}")
 
         return False, None
 
