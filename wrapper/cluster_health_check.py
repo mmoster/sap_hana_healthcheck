@@ -460,6 +460,22 @@ class ClusterHealthCheck:
         if failed:
             print(f"\n[WARNING] Failed steps: {', '.join(failed)}")
 
+        # Save step results for --suggest to use
+        status_file = self.config_dir / "last_run_status.yaml"
+        status_data = {
+            'timestamp': datetime.now().isoformat(),
+            'steps': {step: 'passed' if success else 'failed' for step, success in results.items()},
+            'failed_steps': failed
+        }
+        with open(status_file, 'w') as f:
+            yaml.dump(status_data, f, default_flow_style=False)
+
+        if failed:
+            # Show hint about --suggest
+            first_failed = failed[0]
+            print(f"\n  Get help: ./cluster_health_check.py --suggest {first_failed}")
+            print(f"  Or auto:  ./cluster_health_check.py --suggest")
+
         # Show next steps
         self._print_next_steps(results)
 
@@ -1074,8 +1090,16 @@ Examples:
     # Suggest option
     parser.add_argument(
         '--suggest',
-        choices=['access', 'config', 'pacemaker', 'sap', 'all'],
-        help='Show suggestions and documentation for a specific step'
+        nargs='?',
+        const='auto',
+        choices=['access', 'config', 'pacemaker', 'sap', 'all', 'auto'],
+        help='Show suggestions for a step (default: first failing step from last run)'
+    )
+    parser.add_argument(
+        '--suggest-skip',
+        nargs='+',
+        choices=['access', 'config', 'pacemaker', 'sap'],
+        help='Skip these steps when auto-suggesting (use with --suggest)'
     )
 
     # List steps option
@@ -1094,7 +1118,48 @@ Examples:
 
     # Handle suggest action
     if args.suggest:
-        print_suggestions(args.suggest)
+        step = args.suggest
+        skip_steps = args.suggest_skip or []
+
+        if step == 'auto':
+            # Read last run status to find first failing step
+            config_dir = Path(args.config_dir) if args.config_dir else SCRIPT_DIR
+            status_file = config_dir / "last_run_status.yaml"
+
+            if not status_file.exists():
+                print("No previous run found. Run a health check first:")
+                print("  ./cluster_health_check.py hana01")
+                print("\nOr specify a step directly:")
+                print("  ./cluster_health_check.py --suggest config")
+                sys.exit(1)
+
+            with open(status_file, 'r') as f:
+                status = yaml.safe_load(f)
+
+            failed_steps = status.get('failed_steps', [])
+
+            # Filter out skipped steps
+            if skip_steps:
+                failed_steps = [s for s in failed_steps if s not in skip_steps]
+                if skip_steps:
+                    print(f"Skipping: {', '.join(skip_steps)}\n")
+
+            if not failed_steps:
+                print("No failing steps found!")
+                if skip_steps:
+                    print(f"(after skipping: {', '.join(skip_steps)})")
+                print("\nAll steps passed in the last run.")
+                sys.exit(0)
+
+            step = failed_steps[0]
+            print(f"First failing step: {step}")
+            if len(failed_steps) > 1:
+                others = ', '.join(failed_steps[1:])
+                print(f"Other failing steps: {others}")
+                print(f"\nTo skip this and see next: --suggest --suggest-skip {step}")
+            print()
+
+        print_suggestions(step)
         sys.exit(0)
 
     # Handle list-steps action
