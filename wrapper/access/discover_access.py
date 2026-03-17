@@ -255,6 +255,62 @@ class AccessDiscovery:
             self.config.hosts_file = self.hosts_file
         return hosts
 
+    def _extract_sosreport(self, archive_path: str) -> tuple:
+        """
+        Extract a single SOSreport archive if not already extracted.
+        Returns (success: bool, extracted_dir: str or error_msg: str)
+        """
+        archive_name = os.path.basename(archive_path)
+        base_dir = os.path.dirname(archive_path)
+
+        # Determine the expected directory name (remove .tar.xz, .tar.gz, etc.)
+        dir_name = archive_name
+        for ext in ['.tar.xz', '.tar.gz', '.tar.bz2', '.tgz', '.txz']:
+            if dir_name.endswith(ext):
+                dir_name = dir_name[:-len(ext)]
+                break
+
+        expected_dir = os.path.join(base_dir, dir_name)
+
+        # Check if already extracted
+        if os.path.isdir(expected_dir):
+            return (True, expected_dir)
+
+        # Determine extraction command based on extension
+        if archive_path.endswith('.tar.xz') or archive_path.endswith('.txz'):
+            cmd = ['tar', 'xJf', archive_path, '-C', base_dir]
+        elif archive_path.endswith('.tar.gz') or archive_path.endswith('.tgz'):
+            cmd = ['tar', 'xzf', archive_path, '-C', base_dir]
+        elif archive_path.endswith('.tar.bz2'):
+            cmd = ['tar', 'xjf', archive_path, '-C', base_dir]
+        else:
+            return (False, f"Unknown archive format: {archive_name}")
+
+        try:
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
+                timeout=300  # 5 minute timeout for large archives
+            )
+            if result.returncode == 0:
+                # Find the extracted directory
+                if os.path.isdir(expected_dir):
+                    return (True, expected_dir)
+                # Sometimes the directory name differs slightly, look for it
+                for item in os.listdir(base_dir):
+                    item_path = os.path.join(base_dir, item)
+                    if os.path.isdir(item_path) and item.startswith('sosreport-') and dir_name.startswith(item[:20]):
+                        return (True, item_path)
+                return (True, expected_dir)  # Assume it worked
+            else:
+                return (False, f"Extract failed: {result.stderr[:100]}")
+        except subprocess.TimeoutExpired:
+            return (False, "Extract timed out (>5 min)")
+        except Exception as e:
+            return (False, str(e))
+
     def discover_sosreports(self) -> Dict[str, str]:
         """Discover SOSreport directories and map to hostnames."""
         sosreports = {}
@@ -263,6 +319,30 @@ class AccessDiscovery:
 
         print(f"\n=== Discovering SOSreports in {self.sosreport_dir} ===")
         self.config.sosreport_directory = self.sosreport_dir
+
+        # First, find and extract any compressed SOSreports (multithreaded)
+        archives = []
+        archive_extensions = ('.tar.xz', '.tar.gz', '.tar.bz2', '.tgz', '.txz')
+        for item in os.listdir(self.sosreport_dir):
+            if item.startswith('sosreport-') and item.endswith(archive_extensions):
+                archive_path = os.path.join(self.sosreport_dir, item)
+                archives.append(archive_path)
+
+        if archives:
+            print(f"  Found {len(archives)} compressed SOSreport(s), checking/extracting...")
+            with ThreadPoolExecutor(max_workers=min(len(archives), 4)) as executor:
+                futures = {executor.submit(self._extract_sosreport, arch): arch for arch in archives}
+                for future in as_completed(futures):
+                    archive = futures[future]
+                    archive_name = os.path.basename(archive)
+                    try:
+                        success, result = future.result()
+                        if success:
+                            print(f"    [OK] {archive_name}")
+                        else:
+                            print(f"    [FAIL] {archive_name}: {result}")
+                    except Exception as e:
+                        print(f"    [ERROR] {archive_name}: {e}")
 
         # Look for sosreport directories (pattern: sosreport-<hostname>-<id>)
         for item in os.listdir(self.sosreport_dir):
@@ -273,18 +353,18 @@ class AccessDiscovery:
                 if len(parts) >= 2:
                     hostname = parts[1]
                     sosreports[hostname] = item_path
-                    print(f"  Found: {hostname} -> {item_path}")
+                    print(f"  Found: {hostname} -> {item}")
 
-        # Also check for extracted sosreports
+        # Also check for extracted sosreports by reading etc/hostname
         for item in os.listdir(self.sosreport_dir):
             item_path = os.path.join(self.sosreport_dir, item)
             hostname_file = os.path.join(item_path, 'etc/hostname')
             if os.path.isdir(item_path) and os.path.exists(hostname_file):
                 with open(hostname_file, 'r') as f:
-                    hostname = f.read().strip()
+                    hostname = f.read().strip().split('.')[0]  # Get short hostname
                 if hostname and hostname not in sosreports:
                     sosreports[hostname] = item_path
-                    print(f"  Found: {hostname} -> {item_path}")
+                    print(f"  Found: {hostname} -> {item}")
 
         print(f"Found {len(sosreports)} SOSreports")
         return sosreports
