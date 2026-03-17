@@ -31,17 +31,18 @@ except ImportError:
 
     def dataclass(cls):
         """Simple dataclass decorator fallback"""
-        original_init = cls.__init__ if hasattr(cls, '__init__') else None
-
         def __init__(self, **kwargs):
+            # Set defaults from class annotations first
+            if hasattr(cls, '__annotations__'):
+                for name in cls.__annotations__:
+                    default = getattr(cls, name, None)
+                    setattr(self, name, default)
+            # Override with provided kwargs
             for key, value in kwargs.items():
                 setattr(self, key, value)
-            # Set defaults from class annotations
-            if hasattr(cls, '__annotations__'):
-                for name, _ in cls.__annotations__.items():
-                    if not hasattr(self, name):
-                        default = getattr(cls, name, None)
-                        setattr(self, name, default)
+            # Call __post_init__ if defined
+            if hasattr(self, '__post_init__'):
+                self.__post_init__()
         cls.__init__ = __init__
         return cls
 
@@ -120,11 +121,7 @@ class AccessDiscovery:
         self.config.discovery_timestamp = datetime.now().isoformat()
         self.config_dir.mkdir(parents=True, exist_ok=True)
         with open(self.config_path, 'w') as f:
-            # Python 3.6 / older PyYAML compatibility: sort_keys may not be supported
-            try:
-                yaml.dump(asdict(self.config), f, default_flow_style=False, sort_keys=False)
-            except TypeError:
-                yaml.dump(asdict(self.config), f, default_flow_style=False)
+            yaml.dump(asdict(self.config), f, default_flow_style=False)
         print(f"Configuration saved to {self.config_path}")
 
     def discover_ansible_inventory(self) -> Optional[str]:

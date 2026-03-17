@@ -28,13 +28,17 @@ except ImportError:
     def dataclass(cls):
         """Simple dataclass decorator fallback"""
         def __init__(self, **kwargs):
+            # Set defaults from class annotations first
+            if hasattr(cls, '__annotations__'):
+                for name in cls.__annotations__:
+                    default = getattr(cls, name, None)
+                    setattr(self, name, default)
+            # Override with provided kwargs
             for key, value in kwargs.items():
                 setattr(self, key, value)
-            if hasattr(cls, '__annotations__'):
-                for name, _ in cls.__annotations__.items():
-                    if not hasattr(self, name):
-                        default = getattr(cls, name, None)
-                        setattr(self, name, default)
+            # Call __post_init__ if defined
+            if hasattr(self, '__post_init__'):
+                self.__post_init__()
         cls.__init__ = __init__
         return cls
 
@@ -376,13 +380,7 @@ class DiscoveryRunner:
             }
 
         with open(output_file, 'w') as f:
-            # Python 3.6 / older PyYAML compatibility
-            try:
-                yaml.dump(output_data, f, default_flow_style=False,
-                         sort_keys=False, allow_unicode=True)
-            except TypeError:
-                yaml.dump(output_data, f, default_flow_style=False,
-                         allow_unicode=True)
+            yaml.dump(output_data, f, default_flow_style=False, allow_unicode=True)
 
         print(f"\n[SAVED] Results written to: {output_file}")
         return str(output_file)

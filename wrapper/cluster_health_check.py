@@ -341,11 +341,7 @@ class ClusterHealthCheck:
         }
 
         with open(report_file, 'w') as f:
-            # Python 3.6 / older PyYAML compatibility
-            try:
-                yaml.dump(report_data, f, default_flow_style=False, sort_keys=False)
-            except TypeError:
-                yaml.dump(report_data, f, default_flow_style=False)
+            yaml.dump(report_data, f, default_flow_style=False)
 
         print(f"\n  Report saved: {report_file}")
 
