@@ -1,0 +1,39 @@
+# CHK_SITE_ROLES - Verify site roles consistency
+check_id: CHK_SITE_ROLES
+version: "1.0"
+severity: CRITICAL
+description: Verify site roles are consistent (one primary, one secondary)
+enabled: true
+
+source_definitions:
+  live_cmd: "SAPHanaSR-showAttr 2>/dev/null | grep -E 'site|prim|sec' || crm_mon -A1 2>/dev/null | grep -E 'site|hana'"
+  sos_path: "sos_commands/sap/SAPHanaSR-showAttr"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: primary_site
+      regex: "(P|PRIMARY|prim)"
+      group: 0
+    - name: secondary_site
+      regex: "(S|SECONDARY|sec)"
+      group: 0
+    - name: site_conflict
+      regex: "(P.*P|PRIMARY.*PRIMARY)"
+      group: 0
+
+validation_logic:
+  expectations:
+    - key: primary_site
+      operator: exists
+      value: true
+      message: "No primary site detected"
+    - key: secondary_site
+      operator: exists
+      value: true
+      message: "No secondary site detected - no failover target"
+    - key: site_conflict
+      operator: not_exists
+      value: true
+      message: "Multiple primary sites detected - split-brain"

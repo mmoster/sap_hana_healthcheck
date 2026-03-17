@@ -1,0 +1,32 @@
+# CHK_CLUSTER_QUORUM - Verify cluster has quorum
+check_id: CHK_CLUSTER_QUORUM
+version: "1.0"
+severity: CRITICAL
+description: Verify cluster has quorum
+enabled: true
+
+source_definitions:
+  live_cmd: "corosync-quorumtool -s 2>/dev/null || crm_mon -1 2>/dev/null | grep -i quorum"
+  sos_path: "sos_commands/corosync/corosync-quorumtool_-s"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: quorate
+      regex: "(Quorate:\\s*Yes|partition with quorum)"
+      group: 0
+    - name: not_quorate
+      regex: "(Quorate:\\s*No|NOT have quorum|without quorum)"
+      group: 0
+
+validation_logic:
+  expectations:
+    - key: quorate
+      operator: exists
+      value: true
+      message: "Cluster does not have quorum - split-brain risk"
+    - key: not_quorate
+      operator: not_exists
+      value: true
+      message: "Cluster explicitly reports no quorum"

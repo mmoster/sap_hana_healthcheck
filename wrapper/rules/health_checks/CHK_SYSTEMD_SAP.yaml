@@ -1,0 +1,28 @@
+# CHK_SYSTEMD_SAP - Validate SAP Host Agent and systemd
+check_id: CHK_SYSTEMD_SAP
+version: "1.0"
+severity: WARNING
+description: Validate SAP Host Agent is running and systemd integration
+enabled: true
+
+source_definitions:
+  live_cmd: "systemctl is-active sapinit 2>/dev/null; systemctl is-active saphostagent 2>/dev/null; /usr/sap/hostctrl/exe/saphostexec -status 2>/dev/null"
+  sos_path: "sos_commands/systemd/systemctl_status_--all"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: saphostagent_active
+      regex: "(active|running|saphostexec.*running)"
+      group: 0
+    - name: saphostagent_inactive
+      regex: "(inactive|stopped|dead)"
+      group: 0
+
+validation_logic:
+  expectations:
+    - key: saphostagent_active
+      operator: exists
+      value: true
+      message: "SAP Host Agent may not be running"

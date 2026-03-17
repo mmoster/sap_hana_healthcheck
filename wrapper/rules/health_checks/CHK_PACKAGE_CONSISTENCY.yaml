@@ -1,0 +1,35 @@
+# CHK_PACKAGE_CONSISTENCY - Verify package versions across nodes
+check_id: CHK_PACKAGE_CONSISTENCY
+version: "1.0"
+severity: CRITICAL
+description: Verify critical package versions are consistent across nodes
+enabled: true
+
+source_definitions:
+  live_cmd: "rpm -qa | grep -E 'pacemaker|corosync|resource-agents|SAPHanaSR' | sort 2>/dev/null || dpkg -l | grep -E 'pacemaker|corosync' 2>/dev/null"
+  sos_path: "sos_commands/rpm/package-data"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: pacemaker_version
+      regex: "pacemaker-[\\d\\.-]+"
+      group: 0
+    - name: corosync_version
+      regex: "corosync-[\\d\\.-]+"
+      group: 0
+    - name: saphanasr_version
+      regex: "SAPHanaSR[\\d\\.-]*"
+      group: 0
+
+validation_logic:
+  expectations:
+    - key: pacemaker_version
+      operator: exists
+      value: true
+      message: "Pacemaker package not found"
+    - key: corosync_version
+      operator: exists
+      value: true
+      message: "Corosync package not found"

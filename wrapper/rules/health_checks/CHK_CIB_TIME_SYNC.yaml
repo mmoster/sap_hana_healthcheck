@@ -1,0 +1,28 @@
+# CHK_CIB_TIME_SYNC - Verify CIB updates are synchronized
+check_id: CHK_CIB_TIME_SYNC
+version: "1.0"
+severity: WARNING
+description: Verify CIB (Cluster Information Base) is synchronized across nodes
+enabled: true
+
+source_definitions:
+  live_cmd: "cibadmin -Q --local 2>/dev/null | grep 'cib.*epoch' || crm_mon -1 2>/dev/null | head -5"
+  sos_path: "sos_commands/pacemaker/cibadmin_-Q"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: cib_epoch
+      regex: "epoch=\"(\\d+)\""
+      group: 1
+    - name: dc_present
+      regex: "(Current DC|Designated Controller)"
+      group: 0
+
+validation_logic:
+  expectations:
+    - key: dc_present
+      operator: exists
+      value: true
+      message: "No Designated Controller (DC) - cluster may have communication issues"

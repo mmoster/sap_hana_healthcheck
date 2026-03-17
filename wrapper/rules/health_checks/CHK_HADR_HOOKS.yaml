@@ -1,0 +1,28 @@
+# CHK_HADR_HOOKS - Validate HA/DR provider hooks
+check_id: CHK_HADR_HOOKS
+version: "1.0"
+severity: CRITICAL
+description: Validate SAP HANA HA/DR provider hooks are configured
+enabled: true
+
+source_definitions:
+  live_cmd: "grep -r 'SAPHanaSR\\|susTkOver\\|susChkSrv' /hana/shared/*/global/hdb/custom/config/global.ini 2>/dev/null || cat /usr/sap/*/SYS/global/hdb/custom/config/global.ini 2>/dev/null | grep -i provider"
+  sos_path: "hana/shared/global/hdb/custom/config/global.ini"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: hadr_provider
+      regex: "(ha_dr_provider_SAPHanaSR|ha_dr_provider_susTkOver|provider.*=.*SAPHanaSR)"
+      group: 0
+    - name: sustkover
+      regex: "(susTkOver|SAPHanaSR)"
+      group: 0
+
+validation_logic:
+  expectations:
+    - key: hadr_provider
+      operator: exists
+      value: true
+      message: "HA/DR provider hooks not configured - cluster may not react to HANA events"

@@ -1,0 +1,28 @@
+# CHK_MAJORITY_MAKER - Validate majority maker constraints
+check_id: CHK_MAJORITY_MAKER
+version: "1.0"
+severity: CRITICAL
+description: Validate majority maker configuration for 2-node clusters
+enabled: true
+
+source_definitions:
+  live_cmd: "crm configure show | grep -E 'location.*majority\\|qdevice' 2>/dev/null || corosync-quorumtool -s 2>/dev/null | grep -i qdevice"
+  sos_path: "sos_commands/pacemaker/crm_configure_show"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: qdevice
+      regex: "(qdevice|Qdevice)"
+      group: 0
+    - name: majority_maker
+      regex: "(majority|tie-breaker|SBD)"
+      group: 0
+    - name: two_node_cluster
+      regex: "two_node.*1"
+      group: 0
+
+validation_logic:
+  expectations: []
+  # Informational - majority maker is needed for some setups

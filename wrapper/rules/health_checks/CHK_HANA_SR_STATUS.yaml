@@ -1,0 +1,35 @@
+# CHK_HANA_SR_STATUS - Verify HANA System Replication status
+check_id: CHK_HANA_SR_STATUS
+version: "1.0"
+severity: CRITICAL
+description: Verify HANA System Replication status is healthy
+enabled: true
+
+source_definitions:
+  live_cmd: "SAPHanaSR-showAttr 2>/dev/null || crm_attribute -G -n hana_${SID}_sync_state -q 2>/dev/null || python3 /usr/sap/${SID}/SYS/exe/hdb/python_support/systemReplicationStatus.py 2>/dev/null"
+  sos_path: "sos_commands/sap/SAPHanaSR-showAttr"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: sync_state
+      regex: "(SOK|SFAIL|PRIM|sync_state=\\w+)"
+      group: 0
+    - name: sr_active
+      regex: "(active|PRIMARY|SECONDARY)"
+      group: 0
+    - name: sr_error
+      regex: "(ERROR|SFAIL|UNKNOWN|CONNECTION TIMEOUT)"
+      group: 0
+
+validation_logic:
+  expectations:
+    - key: sr_error
+      operator: not_exists
+      value: true
+      message: "HANA System Replication reports errors"
+    - key: sr_active
+      operator: exists
+      value: true
+      message: "HANA System Replication not active"

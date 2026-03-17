@@ -1,0 +1,31 @@
+# CHK_QUORUM_CONFIG - Validate quorum configuration
+check_id: CHK_QUORUM_CONFIG
+version: "1.0"
+severity: CRITICAL
+description: Validate quorum configuration for 2-node cluster
+enabled: true
+
+source_definitions:
+  live_cmd: "grep -E 'two_node|wait_for_all|expected_votes' /etc/corosync/corosync.conf 2>/dev/null; corosync-quorumtool -s 2>/dev/null | grep -E 'Expected|Total|Quorum'"
+  sos_path: "etc/corosync/corosync.conf"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: two_node
+      regex: "two_node:\\s*1"
+      group: 0
+    - name: wait_for_all
+      regex: "wait_for_all:\\s*[01]"
+      group: 0
+    - name: expected_votes
+      regex: "(expected_votes|Expected votes):\\s*\\d+"
+      group: 0
+
+validation_logic:
+  expectations:
+    - key: expected_votes
+      operator: exists
+      value: true
+      message: "Expected votes not configured in quorum"

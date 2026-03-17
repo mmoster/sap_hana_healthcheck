@@ -1,0 +1,28 @@
+# CHK_REPLICATION_MODE - Verify replication mode is synchronous
+check_id: CHK_REPLICATION_MODE
+version: "1.0"
+severity: WARNING
+description: Verify HANA replication mode is sync or syncmem
+enabled: true
+
+source_definitions:
+  live_cmd: "SAPHanaSR-showAttr 2>/dev/null | grep -i 'srmode\\|op_mode' || hdbnsutil -sr_state 2>/dev/null | grep -i mode"
+  sos_path: "sos_commands/sap/SAPHanaSR-showAttr"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: sync_mode
+      regex: "(sync|syncmem)"
+      group: 0
+    - name: async_mode
+      regex: "(async)"
+      group: 0
+
+validation_logic:
+  expectations:
+    - key: async_mode
+      operator: not_exists
+      value: true
+      message: "Replication mode is async - data loss possible on failover"

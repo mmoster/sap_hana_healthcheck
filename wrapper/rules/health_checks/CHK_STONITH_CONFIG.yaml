@@ -1,0 +1,35 @@
+# CHK_STONITH_CONFIG - Verify STONITH/fencing is enabled
+check_id: CHK_STONITH_CONFIG
+version: "1.0"
+severity: CRITICAL
+description: Verify STONITH/fencing is enabled and configured
+enabled: true
+
+source_definitions:
+  live_cmd: "crm_attribute -G -n stonith-enabled -q 2>/dev/null; echo '---'; crm_resource -l 2>/dev/null | grep -i stonith || pcs stonith status 2>/dev/null"
+  sos_path: "sos_commands/pacemaker/crm_mon_-1"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: stonith_enabled
+      regex: "^true$"
+      group: 0
+    - name: stonith_disabled
+      regex: "^false$"
+      group: 0
+    - name: stonith_resource
+      regex: "(stonith|fence_|STONITH)"
+      group: 0
+
+validation_logic:
+  expectations:
+    - key: stonith_disabled
+      operator: not_exists
+      value: true
+      message: "STONITH is disabled - split-brain protection not active"
+    - key: stonith_resource
+      operator: exists
+      value: true
+      message: "No STONITH/fencing resources configured"

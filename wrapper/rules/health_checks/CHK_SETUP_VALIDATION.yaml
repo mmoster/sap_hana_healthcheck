@@ -1,0 +1,34 @@
+# CHK_SETUP_VALIDATION - Validate against SAP HANA HA best practices
+check_id: CHK_SETUP_VALIDATION
+version: "1.0"
+severity: CRITICAL
+description: Validate cluster setup against SAP HANA HA best practices
+enabled: true
+
+source_definitions:
+  live_cmd: "crm configure show 2>/dev/null || pcs config show 2>/dev/null"
+  sos_path: "sos_commands/pacemaker/crm_configure_show"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: maintenance_mode
+      regex: "maintenance[_-]mode.*true"
+      group: 0
+    - name: stonith_action
+      regex: "(stonith-action=reboot|pcmk_reboot_action)"
+      group: 0
+    - name: resource_stickiness
+      regex: "(resource-stickiness|rsc_defaults.*stickiness)"
+      group: 0
+    - name: migration_threshold
+      regex: "(migration-threshold|meta.*migration)"
+      group: 0
+
+validation_logic:
+  expectations:
+    - key: maintenance_mode
+      operator: not_exists
+      value: true
+      message: "Cluster is in maintenance mode"

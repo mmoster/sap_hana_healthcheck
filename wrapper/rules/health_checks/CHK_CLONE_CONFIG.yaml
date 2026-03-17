@@ -1,0 +1,31 @@
+# CHK_CLONE_CONFIG - Validate clone resource configuration
+check_id: CHK_CLONE_CONFIG
+version: "1.0"
+severity: CRITICAL
+description: Validate SAPHana clone/promotable resource configuration
+enabled: true
+
+source_definitions:
+  live_cmd: "crm configure show 2>/dev/null | grep -A10 'clone\\|ms\\|promotable' || pcs resource config 2>/dev/null | grep -A10 'promotable'"
+  sos_path: "sos_commands/pacemaker/crm_configure_show"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: clone_max
+      regex: "(clone-max=\\d+|promotable-max=\\d+)"
+      group: 0
+    - name: clone_node_max
+      regex: "(clone-node-max=1|promoted-node-max=1)"
+      group: 0
+    - name: master_slave
+      regex: "(ms |master-slave|promotable)"
+      group: 0
+
+validation_logic:
+  expectations:
+    - key: master_slave
+      operator: exists
+      value: true
+      message: "No master/slave (promotable) resource found for SAPHana"

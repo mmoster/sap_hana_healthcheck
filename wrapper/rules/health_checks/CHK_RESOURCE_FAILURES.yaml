@@ -1,0 +1,25 @@
+# CHK_RESOURCE_FAILURES - Detect failed resource operations
+check_id: CHK_RESOURCE_FAILURES
+version: "1.0"
+severity: WARNING
+description: Detect failed resource operations in cluster history
+enabled: true
+
+source_definitions:
+  live_cmd: "crm_mon -1 -f 2>/dev/null | grep -i fail || pcs status --full 2>/dev/null | grep -i fail"
+  sos_path: "sos_commands/pacemaker/crm_mon_-1_-Arf"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: failed_actions
+      regex: "(FAILED|fail-count=[1-9]|Failed Actions)"
+      group: 0
+
+validation_logic:
+  expectations:
+    - key: failed_actions
+      operator: not_exists
+      value: true
+      message: "Failed resource actions detected - may need cleanup"

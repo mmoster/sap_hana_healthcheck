@@ -1,0 +1,25 @@
+# CHK_ALERT_FENCING - Validate SAPHanaSR-alert-fencing
+check_id: CHK_ALERT_FENCING
+version: "1.0"
+severity: WARNING
+description: Validate SAPHanaSR alert and fencing configuration
+enabled: true
+
+source_definitions:
+  live_cmd: "crm configure show | grep -E 'alert|fence' 2>/dev/null || pcs alert config 2>/dev/null"
+  sos_path: "sos_commands/pacemaker/crm_configure_show"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: alert_config
+      regex: "(alert|SAPHanaSR-alert)"
+      group: 0
+    - name: fence_topology
+      regex: "(fencing-topology|fence_)"
+      group: 0
+
+validation_logic:
+  expectations: []
+  # This is informational - alerts are optional but recommended

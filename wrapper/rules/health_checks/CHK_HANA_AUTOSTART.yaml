@@ -1,0 +1,28 @@
+# CHK_HANA_AUTOSTART - Validate HANA autostart is disabled
+check_id: CHK_HANA_AUTOSTART
+version: "1.0"
+severity: WARNING
+description: Validate HANA autostart is disabled (cluster manages startup)
+enabled: true
+
+source_definitions:
+  live_cmd: "grep -r 'Autostart' /usr/sap/*/SYS/profile/*_HDB* 2>/dev/null || grep 'Autostart' /sapmnt/*/profile/* 2>/dev/null"
+  sos_path: "usr/sap/SYS/profile"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: autostart_disabled
+      regex: "Autostart\\s*=\\s*0"
+      group: 0
+    - name: autostart_enabled
+      regex: "Autostart\\s*=\\s*1"
+      group: 0
+
+validation_logic:
+  expectations:
+    - key: autostart_enabled
+      operator: not_exists
+      value: true
+      message: "HANA autostart is enabled - conflicts with cluster management"

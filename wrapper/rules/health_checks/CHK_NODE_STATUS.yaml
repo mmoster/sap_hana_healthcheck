@@ -1,0 +1,32 @@
+# CHK_NODE_STATUS - Verify all cluster nodes are online
+check_id: CHK_NODE_STATUS
+version: "1.0"
+severity: CRITICAL
+description: Verify all cluster nodes are online
+enabled: true
+
+source_definitions:
+  live_cmd: "crm_mon -1 -r 2>/dev/null || pcs status nodes 2>/dev/null"
+  sos_path: "sos_commands/pacemaker/crm_mon_-1"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: offline_nodes
+      regex: "(OFFLINE|Offline:.*\\S)"
+      group: 0
+    - name: online_nodes
+      regex: "(Online|online)"
+      group: 0
+
+validation_logic:
+  expectations:
+    - key: offline_nodes
+      operator: not_exists
+      value: true
+      message: "One or more cluster nodes are OFFLINE"
+    - key: online_nodes
+      operator: exists
+      value: true
+      message: "No online nodes found - cluster may be down"

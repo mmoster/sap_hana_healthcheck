@@ -1,0 +1,35 @@
+# CHK_MASTER_SLAVE_ROLES - Verify master/slave role consistency
+check_id: CHK_MASTER_SLAVE_ROLES
+version: "1.0"
+severity: CRITICAL
+description: Verify exactly one master and one slave in HANA cluster
+enabled: true
+
+source_definitions:
+  live_cmd: "crm_mon -1 2>/dev/null | grep -E 'Master|Slave|Promoted|Unpromoted' || SAPHanaSR-showAttr 2>/dev/null | grep -E 'roles|master'"
+  sos_path: "sos_commands/pacemaker/crm_mon_-1"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: master_count
+      regex: "(Masters: \\[ \\S+ \\]|Promoted \\S+|:Master)"
+      group: 0
+    - name: slave_count
+      regex: "(Slaves: \\[ \\S+ \\]|Unpromoted \\S+|:Slave)"
+      group: 0
+    - name: no_role
+      regex: "(Stopped|no role|unknown)"
+      group: 0
+
+validation_logic:
+  expectations:
+    - key: master_count
+      operator: exists
+      value: true
+      message: "No master/promoted instance found"
+    - key: slave_count
+      operator: exists
+      value: true
+      message: "No slave/unpromoted instance found - no failover target"

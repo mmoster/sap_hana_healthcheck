@@ -1,0 +1,35 @@
+# CHK_RESOURCE_STATUS - Verify SAP HANA resources are running
+check_id: CHK_RESOURCE_STATUS
+version: "1.0"
+severity: CRITICAL
+description: Verify SAP HANA cluster resources are running
+enabled: true
+
+source_definitions:
+  live_cmd: "crm_mon -1 -r 2>/dev/null || pcs status resources 2>/dev/null"
+  sos_path: "sos_commands/pacemaker/crm_mon_-1"
+
+parser:
+  type: regex
+  multiline: true
+  search_patterns:
+    - name: sap_hana_resource
+      regex: "(SAPHana|rsc_SAPHana|SAPHanaTopology)"
+      group: 0
+    - name: resource_stopped
+      regex: "(Stopped|FAILED|stopped)"
+      group: 0
+    - name: resource_started
+      regex: "(Started|Master|Slave|running)"
+      group: 0
+
+validation_logic:
+  expectations:
+    - key: sap_hana_resource
+      operator: exists
+      value: true
+      message: "No SAP HANA resources found in cluster"
+    - key: resource_started
+      operator: exists
+      value: true
+      message: "SAP HANA resources are not running"
