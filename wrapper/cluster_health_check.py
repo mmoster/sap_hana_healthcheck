@@ -48,7 +48,7 @@ class ClusterHealthCheck:
     def __init__(self, config_dir: str = None, sosreport_dir: str = None,
                  hosts_file: str = None, workers: int = 10, rules_path: str = None,
                  debug: bool = False, ansible_group: str = None, skip_ansible: bool = False,
-                 cluster_name: str = None):
+                 cluster_name: str = None, local_mode: bool = False):
         self.config_dir = Path(config_dir) if config_dir else SCRIPT_DIR
         self.sosreport_dir = sosreport_dir
         self.hosts_file = hosts_file
@@ -61,6 +61,7 @@ class ClusterHealthCheck:
         self.ansible_group = ansible_group
         self.skip_ansible = skip_ansible
         self.cluster_name = cluster_name
+        self.local_mode = local_mode
 
     def _debug_print(self, message: str):
         """Print debug message if debug mode is enabled."""
@@ -83,6 +84,7 @@ class ClusterHealthCheck:
             print(f"  Config directory:    {self.config_dir}")
             print(f"  Access config file:  {self.config_dir / AccessDiscovery.CONFIG_FILE}")
             print(f"  Rules path:          {self.rules_path}")
+            print(f"  Local mode:          {self.local_mode}")
             print(f"  Hosts file:          {self.hosts_file or '(auto-discover from Ansible)'}")
             print(f"  SOSreport dir:       {self.sosreport_dir or '(not set)'}")
             print(f"  Workers:             {self.workers}")
@@ -109,7 +111,8 @@ class ClusterHealthCheck:
             debug=self.debug,
             ansible_group=self.ansible_group,
             skip_ansible=self.skip_ansible,
-            cluster_name=self.cluster_name
+            cluster_name=self.cluster_name,
+            local_mode=self.local_mode
         )
         discovery.MAX_WORKERS = self.workers
 
@@ -552,13 +555,16 @@ def print_guide():
 
 QUICK START
 -----------
-  1. Check a live cluster (auto-discovers all members):
+  1. Run directly on a cluster node (auto-detects local mode):
+     ./cluster_health_check.py
+
+  2. Check a live cluster remotely (auto-discovers all members):
      ./cluster_health_check.py hana01
 
-  2. Analyze SOSreports offline:
+  3. Analyze SOSreports offline:
      ./cluster_health_check.py -s /path/to/sosreports/
 
-  3. Show current configuration:
+  4. Show current configuration:
      ./cluster_health_check.py --show-config
 
 WORKFLOW
@@ -594,7 +600,11 @@ WORKFLOW
 
 COMMON USE CASES
 ----------------
-  Live cluster check:
+  Run on the cluster node itself (local mode):
+    ./cluster_health_check.py              # Auto-detects local mode
+    ./cluster_health_check.py --local      # Explicit local mode
+
+  Live cluster check from remote:
     ./cluster_health_check.py hana01 hana02
 
   SOSreport analysis (auto-extracts .tar.xz):
@@ -618,11 +628,13 @@ COMMON USE CASES
 OPTIONS REFERENCE
 -----------------
   Input Sources:
+    (none)            Auto-detect local mode (on cluster node)
     <hosts>           Hostnames to check (auto-discovers cluster)
     -H, --hosts-file  File with hostnames (one per line)
     -s, --sosreport   Directory with SOSreport archives
     -g, --group       Ansible inventory group filter
     -C, --cluster     Use saved cluster name
+    -l, --local       Explicit local mode (on cluster node)
 
   Actions:
     -a, --access-only  Only run access discovery
@@ -985,12 +997,13 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  %(prog)s                          Run on cluster node (auto-detects local mode)
+  %(prog)s --local                  Explicit local mode (on cluster node)
   %(prog)s hana03                   Auto-discover cluster from hana03 and check all members
   %(prog)s -C mycluster             Use previously discovered cluster 'mycluster'
   %(prog)s -d hana03                Same with debug output
   %(prog)s --access-only hana03     Only test access (discover cluster members)
   %(prog)s -g sap_cluster           Only check hosts in Ansible group 'sap_cluster'
-  %(prog)s                          Run full health check (all Ansible inventory hosts)
   %(prog)s --show-config            Show current configuration
   %(prog)s -H hosts.txt             Use custom hosts file
   %(prog)s -s /path/to/sosreports   Use SOSreport directory
@@ -1078,6 +1091,13 @@ Examples:
         '--debug', '-d',
         action='store_true',
         help='Enable debug mode (show config files used and step progress)'
+    )
+
+    # Local mode option
+    parser.add_argument(
+        '--local', '-l',
+        action='store_true',
+        help='Run on cluster node itself (execute commands locally instead of via SSH)'
     )
 
     # Guide option
@@ -1171,6 +1191,22 @@ Examples:
     config_dir = Path(args.config_dir) if args.config_dir else SCRIPT_DIR
     config_path = config_dir / AccessDiscovery.CONFIG_FILE
 
+    # Auto-detect local mode: if no hosts, no SOSreport, no cluster name, and no existing config
+    local_mode = args.local
+    if not local_mode and not args.hosts and not args.hosts_file and not args.sosreport_dir and not args.cluster:
+        # Check if we have an existing config with nodes
+        if config_path.exists() and not args.force:
+            with open(config_path, 'r') as f:
+                existing_config = yaml.safe_load(f) or {}
+            if not existing_config.get('nodes'):
+                # No existing nodes, assume local mode
+                local_mode = True
+                print("[INFO] No input source specified, assuming local mode (running on cluster node)")
+        else:
+            # No config file, assume local mode
+            local_mode = True
+            print("[INFO] No input source specified, assuming local mode (running on cluster node)")
+
     # Handle hosts provided on command line
     hosts_file = args.hosts_file
     temp_hosts_file = None
@@ -1221,7 +1257,8 @@ Examples:
         rules_path=args.rules_path,
         debug=args.debug,
         ansible_group=args.group,
-        cluster_name=args.cluster
+        cluster_name=args.cluster,
+        local_mode=local_mode
     )
 
     def cleanup_temp_file():

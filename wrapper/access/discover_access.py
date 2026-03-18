@@ -102,7 +102,8 @@ class AccessDiscovery:
     def __init__(self, config_dir: str = ".", sosreport_dir: Optional[str] = None,
                  hosts_file: Optional[str] = None, force_rediscover: bool = False,
                  debug: bool = False, ansible_group: Optional[str] = None,
-                 skip_ansible: bool = False, cluster_name: Optional[str] = None):
+                 skip_ansible: bool = False, cluster_name: Optional[str] = None,
+                 local_mode: bool = False):
         self.config_dir = Path(config_dir)
         self.config_path = self.config_dir / self.CONFIG_FILE
         self.sosreport_dir = sosreport_dir
@@ -112,6 +113,8 @@ class AccessDiscovery:
         self.ansible_group = ansible_group
         self.skip_ansible = skip_ansible
         self.cluster_name = cluster_name
+        self.local_mode = local_mode
+        self.local_hostname = None
         self.config = self._load_or_create_config()
 
     def _load_or_create_config(self) -> AccessConfig:
@@ -402,6 +405,104 @@ class AccessDiscovery:
 
         return None
 
+    def get_local_hostname(self) -> str:
+        """Get the local hostname (short form)."""
+        try:
+            result = subprocess.run(
+                ['hostname', '-s'],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                universal_newlines=True, timeout=5
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except Exception:
+            pass
+
+        # Fallback to socket
+        import socket
+        return socket.gethostname().split('.')[0]
+
+    def discover_cluster_nodes_local(self) -> tuple:
+        """
+        Discover cluster members by running commands locally.
+        Returns tuple: (cluster_name, list of cluster node hostnames)
+        """
+        cluster_nodes = []
+        cluster_name = None
+
+        print(f"\n=== Discovering Cluster (local mode) ===")
+
+        # Get local hostname
+        self.local_hostname = self.get_local_hostname()
+        print(f"  Local hostname: {self.local_hostname}")
+
+        # Get cluster name locally
+        name_commands = [
+            "crm_attribute -G -n cluster-name -q 2>/dev/null",
+            "pcs property show cluster-name 2>/dev/null | grep cluster-name | awk '{print $2}'",
+            "corosync-cmapctl totem.cluster_name 2>/dev/null | cut -d= -f2 | tr -d ' '",
+            "grep -oP 'cluster_name:\\s*\\K\\S+' /etc/corosync/corosync.conf 2>/dev/null",
+        ]
+
+        for cmd in name_commands:
+            try:
+                result = subprocess.run(
+                    cmd, shell=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    universal_newlines=True, timeout=self.SSH_TIMEOUT
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    name = result.stdout.strip()
+                    if name and name != '(null)':
+                        cluster_name = name
+                        print(f"  Cluster name: {cluster_name}")
+                        break
+            except Exception:
+                continue
+
+        # Discover cluster nodes locally
+        discovery_commands = [
+            "crm_node -l | awk '{print $2}'",
+            "pcs status nodes | grep -E 'Online|Standby|Offline' | tr ' ' '\\n' | grep -v -E '^$|Online|Standby|Offline|:'",
+            "corosync-cmapctl -b nodelist.node | grep 'ring0_addr' | cut -d= -f2 | tr -d ' '",
+            "crm status | grep -E '^Node' | awk '{print $2}'",
+        ]
+
+        for cmd in discovery_commands:
+            try:
+                result = subprocess.run(
+                    cmd, shell=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    universal_newlines=True, timeout=self.SSH_TIMEOUT
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    nodes = [n.strip() for n in result.stdout.strip().split('\n') if n.strip()]
+                    if nodes:
+                        cluster_nodes = nodes
+                        if self.debug:
+                            print(f"  [DEBUG] Found cluster nodes via: {cmd[:40]}...")
+                        print(f"  Found {len(cluster_nodes)} cluster node(s): {', '.join(cluster_nodes)}")
+                        break
+            except Exception as e:
+                if self.debug:
+                    print(f"  [DEBUG] Command failed: {e}")
+                continue
+
+        if not cluster_nodes:
+            print(f"  Could not discover cluster nodes locally")
+            print(f"  Using {self.local_hostname} as only node")
+            cluster_nodes = [self.local_hostname]
+
+        # Store cluster info
+        if cluster_name:
+            self.config.clusters[cluster_name] = {
+                'nodes': cluster_nodes,
+                'discovered_from': self.local_hostname,
+                'discovered_at': datetime.now().isoformat()
+            }
+
+        return cluster_name, cluster_nodes
+
     def discover_cluster_nodes(self, seed_host: str, user: str = None) -> tuple:
         """
         Discover cluster members by connecting to a seed node and querying the cluster.
@@ -559,6 +660,10 @@ class AccessDiscovery:
         print("SAP Pacemaker Cluster - Access Discovery")
         print("=" * 60)
 
+        # Handle local mode - running on the cluster node itself
+        if self.local_mode:
+            return self._discover_local_mode()
+
         # Collect all hosts from different sources
         all_hosts = {}  # hostname -> {ansible_info, sosreport_path}
         file_hosts = []
@@ -704,6 +809,55 @@ class AccessDiscovery:
 
         return self.config
 
+    def _discover_local_mode(self) -> AccessConfig:
+        """
+        Discovery routine for local mode - running on the cluster node itself.
+        The local node uses direct command execution, other nodes use SSH.
+        """
+        print("\n[INFO] Local mode: running on cluster node")
+
+        # Clear old nodes for fresh discovery
+        self.config.nodes = {}
+
+        # Discover cluster nodes locally
+        cluster_name, cluster_nodes = self.discover_cluster_nodes_local()
+
+        if not cluster_nodes:
+            print("[ERROR] Could not discover any cluster nodes")
+            return self.config
+
+        # Get local hostname
+        local_hostname = self.local_hostname or self.get_local_hostname()
+
+        print(f"\n=== Checking access to {len(cluster_nodes)} cluster node(s) ===")
+
+        # Process each node
+        for node_name in cluster_nodes:
+            if node_name == local_hostname:
+                # Local node - use local execution
+                node = NodeAccess(hostname=node_name)
+                node.last_checked = datetime.now().isoformat()
+                node.preferred_method = 'local'
+                self.config.nodes[node_name] = asdict(node)
+                print(f"  {node_name}: LOCAL (this node)")
+            else:
+                # Remote node - check SSH access
+                node = self.check_node_access(node_name, None, None)
+                self.config.nodes[node_name] = asdict(node)
+                status = []
+                if node.ssh_reachable:
+                    status.append(f"SSH({node.ssh_user})")
+                print(f"  {node_name}: {', '.join(status) if status else 'NO ACCESS'} "
+                      f"-> {node.preferred_method or 'none'}")
+
+        self.config.discovery_complete = True
+        self.save_config()
+
+        # Print summary
+        self._print_summary()
+
+        return self.config
+
     def _print_summary(self):
         """Print discovery summary."""
         print("\n" + "=" * 60)
@@ -711,12 +865,15 @@ class AccessDiscovery:
         print("=" * 60)
 
         total = len(self.config.nodes)
+        local_count = sum(1 for n in self.config.nodes.values() if n.get('preferred_method') == 'local')
         ssh_count = sum(1 for n in self.config.nodes.values() if n.get('ssh_reachable'))
         ansible_count = sum(1 for n in self.config.nodes.values() if n.get('ansible_reachable'))
         sos_count = sum(1 for n in self.config.nodes.values() if n.get('sosreport_path'))
         no_access = sum(1 for n in self.config.nodes.values() if not n.get('preferred_method'))
 
         print(f"Total nodes:      {total}")
+        if local_count > 0:
+            print(f"Local (this node):{local_count}")
         print(f"SSH accessible:   {ssh_count}")
         print(f"Ansible access:   {ansible_count}")
         print(f"SOSreport avail:  {sos_count}")

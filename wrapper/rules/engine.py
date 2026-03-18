@@ -161,7 +161,10 @@ class RulesEngine:
                         method: str = 'ssh', user: str = None) -> Tuple[bool, str]:
         """Execute a command locally, via SSH, or via Ansible."""
         try:
-            if node and method == 'ssh':
+            if method == 'local':
+                # Execute command locally (when running on the cluster node itself)
+                full_cmd = cmd
+            elif node and method == 'ssh':
                 ssh_user = user or os.environ.get('USER', 'root')
                 # Escape single quotes in command: replace ' with '\''
                 escaped_cmd = cmd.replace("'", "'\"'\"'")
@@ -306,7 +309,7 @@ class RulesEngine:
         if cmd_name in builtins or cmd_name.startswith('/'):
             return True, "builtin/path"
 
-        # Check if command exists on remote node
+        # Check if command exists (locally or on remote node)
         check_cmd = f"command -v {cmd_name} >/dev/null 2>&1 && echo 'OK' || echo 'MISSING'"
         success, output = self._execute_command(check_cmd, node, method, user)
 
