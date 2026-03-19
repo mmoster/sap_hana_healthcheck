@@ -1,13 +1,27 @@
 # CHK_HANA_INSTALLED - Check if SAP HANA is installed
 check_id: CHK_HANA_INSTALLED
-version: "1.0"
+version: "1.1"
 severity: INFO
-description: Check if SAP HANA is installed on this node
+description: Check if SAP HANA database is installed on this node
 enabled: true
 
 source_definitions:
-  # Use explicit check that returns FOUND or NOT_FOUND
-  live_cmd: "if ls -d /usr/sap/*/HDB* /hana/shared/*/HDB* 2>/dev/null | head -1 | grep -q .; then echo 'HANA_FOUND'; else echo 'HANA_NOT_FOUND'; fi"
+  # Check for HANA-specific indicators:
+  # 1. HDB instance directory with hdbsql executable
+  # 2. Or /hana/shared with SID directory
+  # 3. Or hdbuserstore command available
+  live_cmd: |
+    if ls /usr/sap/*/HDB*/exe/hdbsql 2>/dev/null | head -1 | grep -q .; then
+      echo 'HANA_FOUND'
+    elif ls /hana/shared/*/HDB*/exe/hdbsql 2>/dev/null | head -1 | grep -q .; then
+      echo 'HANA_FOUND'
+    elif command -v hdbuserstore >/dev/null 2>&1; then
+      echo 'HANA_FOUND'
+    elif ls /hana/data 2>/dev/null | grep -q .; then
+      echo 'HANA_FOUND'
+    else
+      echo 'HANA_NOT_FOUND'
+    fi
   sos_path: "sos_commands/sap/sap_discovery"
 
 parser:
@@ -24,4 +38,4 @@ validation_logic:
     - key: hana_status
       operator: eq
       value: "HANA_FOUND"
-      message: "SAP HANA not installed on this node"
+      message: "SAP HANA database not installed on this node"
