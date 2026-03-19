@@ -556,19 +556,7 @@ class ClusterHealthCheck:
         with open(status_file, 'w') as f:
             yaml.dump(status_data, f, default_flow_style=False)
 
-        if failed:
-            # Show hint about --suggest
-            first_failed = failed[0]
-            print(f"\n  Get help: ./cluster_health_check.py --suggest {first_failed}")
-            print(f"  Or auto:  ./cluster_health_check.py --suggest")
-
-        # Show next steps
-        self._print_next_steps(results)
-
-        if failed:
-            return 1
-
-        # Check actual health check results for final message
+        # Check actual health check results
         has_failures = False
         has_skipped = False
         needs_install = False
@@ -583,10 +571,29 @@ class ClusterHealthCheck:
                 if 'package not found' in msg.lower() or ("command '" in msg.lower() and "not found" in msg.lower()):
                     needs_install = True
 
+        if failed:
+            # Show hint about --suggest
+            first_failed = failed[0]
+            print(f"\n  Get help: ./cluster_health_check.py --suggest {first_failed}")
+            print(f"  Or auto:  ./cluster_health_check.py --suggest")
+
+        # Show next steps
+        self._print_next_steps(results)
+
+        # Final status and prompt
         if needs_install:
-            print("\n[ACTION REQUIRED] Cluster packages not installed. Run: ./cluster_health_check.py -i")
+            print("\n[ACTION REQUIRED] Cluster packages not installed.")
+            try:
+                response = input("\nShow installation guide now? [Y/n]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                response = 'n'
+                print()
+
+            if response != 'n':
+                print()
+                print_suggestions('install')
             return 2
-        elif has_failures:
+        elif failed or has_failures:
             print("\n[WARNING] Some health checks FAILED. Review report for details.")
             return 1
         elif has_skipped:
