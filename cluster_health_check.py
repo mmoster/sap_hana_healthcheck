@@ -2630,6 +2630,23 @@ Examples:
             except Exception:
                 pass
 
+    def show_interactive_menu():
+        """Show interactive menu and return user choice."""
+        print("\n" + "=" * 63)
+        print(" What would you like to do next?")
+        print("=" * 63)
+        print("  [1] Show installation status (-i)")
+        print("  [2] Rerun health check")
+        print("  [3] Run on different hosts")
+        print("  [4] Show configuration")
+        print("  [q] Quit")
+        print("-" * 63)
+        try:
+            choice = input("  Enter choice [1-4/q]: ").strip().lower()
+            return choice
+        except (EOFError, KeyboardInterrupt):
+            return 'q'
+
     try:
         if args.access_only:
             # Only run access discovery
@@ -2643,6 +2660,44 @@ Examples:
                 force_rediscover=args.force,
                 skip_steps=args.skip
             )
+
+            # Interactive menu loop
+            while True:
+                choice = show_interactive_menu()
+
+                if choice == '1' or choice == 'i':
+                    # Show installation status
+                    health_check.print_dynamic_install_guide()
+                elif choice == '2' or choice == 'r':
+                    # Rerun health check
+                    print("\n" + "=" * 63)
+                    print(" Rerunning health check...")
+                    print("=" * 63)
+                    exit_code = health_check.run_all_checks(
+                        force_rediscover=False,
+                        skip_steps=args.skip
+                    )
+                elif choice == '3' or choice == 'h':
+                    # Run on different hosts
+                    try:
+                        new_hosts = input("  Enter hostnames (space-separated): ").strip()
+                        if new_hosts:
+                            print(f"\n  To check different hosts, run:")
+                            print(f"    ./cluster_health_check.py {new_hosts}")
+                            print(f"\n  Or with force rediscovery:")
+                            print(f"    ./cluster_health_check.py -f {new_hosts}")
+                    except (EOFError, KeyboardInterrupt):
+                        pass
+                elif choice == '4' or choice == 'c':
+                    # Show configuration
+                    from access.discover_access import show_config
+                    show_config(health_check.config_dir / 'cluster_access_config.yaml')
+                elif choice == 'q' or choice == 'quit' or choice == 'exit' or choice == '':
+                    print("\n  Goodbye!")
+                    break
+                else:
+                    print(f"  Invalid choice: {choice}")
+
             cleanup_temp_file()
             sys.exit(exit_code)
 
