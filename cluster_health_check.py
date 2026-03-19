@@ -111,13 +111,20 @@ class ClusterHealthCheck:
             'repos_enabled': None,
             'packages_installed': None,
             'pcsd_running': None,
+            'corosync_running': None,
+            'pacemaker_running': None,
             'cluster_configured': None,
+            'cluster_online': None,
             'stonith_configured': None,
+            'stonith_enabled': None,
             'hana_resources': None,
+            'hana_installed': None,
             'missing_packages': [],
             'missing_repos': [],
             'node': node,
             'method': method,
+            'cluster_name': None,
+            'cluster_nodes': [],
         }
 
         if not node and not self.access_config:
@@ -176,19 +183,65 @@ class ClusterHealthCheck:
         )
         status['pcsd_running'] = success and 'active' in output
 
-        # Check cluster configured
+        # Check corosync service
         success, output = self._execute_check_cmd(
-            "pcs cluster status 2>/dev/null | head -1",
+            "systemctl is-active corosync 2>/dev/null",
+            node, method, user
+        )
+        status['corosync_running'] = success and 'active' in output
+
+        # Check pacemaker service
+        success, output = self._execute_check_cmd(
+            "systemctl is-active pacemaker 2>/dev/null",
+            node, method, user
+        )
+        status['pacemaker_running'] = success and 'active' in output
+
+        # Check cluster configured and get cluster name
+        success, output = self._execute_check_cmd(
+            "pcs cluster status 2>/dev/null | head -5",
             node, method, user
         )
         status['cluster_configured'] = success and 'Cluster' in output
+        if success and 'Cluster name:' in output:
+            import re
+            match = re.search(r'Cluster name:\s*(\S+)', output)
+            if match:
+                status['cluster_name'] = match.group(1)
 
-        # Check STONITH
+        # Check if nodes are online
+        success, output = self._execute_check_cmd(
+            "pcs status nodes 2>/dev/null",
+            node, method, user
+        )
+        if success:
+            status['cluster_online'] = 'Online:' in output
+            # Extract online nodes
+            import re
+            match = re.search(r'Online:\s*\[(.*?)\]', output)
+            if match:
+                status['cluster_nodes'] = [n.strip() for n in match.group(1).split() if n.strip()]
+
+        # Check STONITH enabled
+        success, output = self._execute_check_cmd(
+            "pcs property show stonith-enabled 2>/dev/null",
+            node, method, user
+        )
+        status['stonith_enabled'] = success and 'true' in output.lower()
+
+        # Check STONITH configured
         success, output = self._execute_check_cmd(
             "pcs stonith status 2>/dev/null | grep -v 'NO stonith'",
             node, method, user
         )
         status['stonith_configured'] = success and output and 'Started' in output
+
+        # Check HANA installed
+        success, output = self._execute_check_cmd(
+            "ls -d /usr/sap/*/HDB[0-9][0-9] 2>/dev/null | head -1",
+            node, method, user
+        )
+        status['hana_installed'] = success and '/usr/sap/' in output
 
         # Check HANA resources
         success, output = self._execute_check_cmd(
@@ -229,7 +282,7 @@ class ClusterHealthCheck:
 
         # Print status summary
         print("\n" + "-" * 63)
-        print(" Current Status")
+        print(" Current Installation Status")
         print("-" * 63)
 
         def status_icon(val):
@@ -237,15 +290,36 @@ class ClusterHealthCheck:
                 return "[?]"
             return "[OK]" if val else "[--]"
 
-        print(f"  {status_icon(status['subscription_registered'])} Subscription registered")
-        print(f"  {status_icon(status['repos_enabled'])} HA/SAP repositories enabled")
-        print(f"  {status_icon(status['packages_installed'])} Cluster packages installed")
+        # Infrastructure
+        print("\n  INFRASTRUCTURE:")
+        print(f"    {status_icon(status['subscription_registered'])} Subscription registered")
+        print(f"    {status_icon(status['repos_enabled'])} HA/SAP repositories enabled")
+        print(f"    {status_icon(status['packages_installed'])} Cluster packages installed")
         if status['missing_packages']:
-            print(f"      Missing: {', '.join(status['missing_packages'])}")
-        print(f"  {status_icon(status['pcsd_running'])} PCSD service running")
-        print(f"  {status_icon(status['cluster_configured'])} Cluster configured")
-        print(f"  {status_icon(status['stonith_configured'])} STONITH/fencing configured")
-        print(f"  {status_icon(status['hana_resources'])} SAP HANA resources configured")
+            print(f"        Missing: {', '.join(status['missing_packages'])}")
+
+        # Cluster services
+        print("\n  CLUSTER SERVICES:")
+        print(f"    {status_icon(status['pcsd_running'])} PCSD service (cluster daemon)")
+        print(f"    {status_icon(status['corosync_running'])} Corosync service (messaging)")
+        print(f"    {status_icon(status['pacemaker_running'])} Pacemaker service (resource manager)")
+
+        # Cluster configuration
+        print("\n  CLUSTER CONFIGURATION:")
+        cluster_info = ""
+        if status['cluster_name']:
+            cluster_info = f" ({status['cluster_name']})"
+        print(f"    {status_icon(status['cluster_configured'])} Cluster configured{cluster_info}")
+        if status['cluster_nodes']:
+            print(f"        Online nodes: {', '.join(status['cluster_nodes'])}")
+        print(f"    {status_icon(status['cluster_online'])} Cluster nodes online")
+        print(f"    {status_icon(status['stonith_enabled'])} STONITH enabled in properties")
+        print(f"    {status_icon(status['stonith_configured'])} STONITH device configured & running")
+
+        # SAP HANA
+        print("\n  SAP HANA:")
+        print(f"    {status_icon(status['hana_installed'])} SAP HANA installed")
+        print(f"    {status_icon(status['hana_resources'])} SAP HANA cluster resources")
 
         # Determine what steps are needed
         steps_needed = []
@@ -257,11 +331,14 @@ class ClusterHealthCheck:
             steps_needed.append('packages')
         if not status['pcsd_running']:
             steps_needed.append('pcsd')
+        # Check if cluster services need starting (packages installed but services not running)
+        if status['packages_installed'] and not status['corosync_running']:
+            steps_needed.append('start_services')
         if not status['cluster_configured']:
             steps_needed.append('cluster')
-        if not status['stonith_configured']:
+        if not status['stonith_enabled'] or not status['stonith_configured']:
             steps_needed.append('stonith')
-        if not status['hana_resources']:
+        if status['hana_installed'] and not status['hana_resources']:
             steps_needed.append('hana')
 
         if not steps_needed:
@@ -272,10 +349,16 @@ class ClusterHealthCheck:
             print("    ./cluster_health_check.py")
             return
 
-        # Print only the needed steps
+        # Determine the immediate next step
+        next_step = steps_needed[0] if steps_needed else None
+
+        # Print summary and next step
         print("\n" + "=" * 63)
-        print(f" Required Steps ({len(steps_needed)} remaining)")
+        print(f" NEXT STEP: {next_step.upper().replace('_', ' ') if next_step else 'DONE'}")
         print("=" * 63)
+
+        # Print only the needed steps
+        print(f"\n  Remaining steps ({len(steps_needed)}): {', '.join(steps_needed)}")
 
         step_num = 1
 
@@ -331,6 +414,29 @@ STEP {step_num}: CONFIGURE PCSD SERVICE (both nodes)
   # Open firewall ports
   firewall-cmd --permanent --add-service=high-availability
   firewall-cmd --reload
+""")
+            step_num += 1
+
+        if 'start_services' in steps_needed:
+            print(f"""
+STEP {step_num}: START CLUSTER SERVICES (both nodes)
+---------------------------------------------------------------
+  The cluster packages are installed but services are not running.
+
+  # Check current service status
+  systemctl status pcsd corosync pacemaker
+
+  # If cluster was previously configured, start it:
+  pcs cluster start --all
+
+  # Or if this is a fresh setup, ensure pcsd is running first:
+  systemctl enable --now pcsd
+
+  # Then configure the cluster (see next step)
+
+  # After cluster is configured and started, verify:
+  pcs cluster status
+  pcs status
 """)
             step_num += 1
 
