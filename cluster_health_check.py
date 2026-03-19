@@ -465,13 +465,12 @@ class ClusterHealthCheck:
         # Determine the immediate next step
         next_step = steps_needed[0] if steps_needed else None
 
-        # Clear screen and print next step prominently
-        import os
-        os.system('clear' if os.name == 'posix' else 'cls')
-
-        # Print summary and next step
+        # Print summary and next step with prominent separator
+        print("\n")
+        print("=" * 63)
         print("=" * 63)
         print(f" NEXT STEP: {next_step.upper().replace('_', ' ') if next_step else 'DONE'}")
+        print("=" * 63)
         print("=" * 63)
 
         # Print only the needed steps
