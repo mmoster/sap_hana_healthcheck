@@ -586,7 +586,8 @@ class ClusterHealthCheck:
             print(" [ACTION REQUIRED] Cluster packages not installed.")
             print("=" * 63)
             print("\nOptions:")
-            print("  [Enter]  Show installation guide")
+            print("  [Enter]  Rerun health check (monitor installation progress)")
+            print("  [i]      Show installation guide")
             print("  [d]      Delete report files")
             print("  [q]      Quit")
 
@@ -596,7 +597,13 @@ class ClusterHealthCheck:
                 response = 'q'
                 print()
 
-            if response == '' or response == 'y':
+            if response == '':
+                # Rerun health check
+                print("\n" + "=" * 63)
+                print(" Rerunning health check...")
+                print("=" * 63)
+                return self.run_all_checks(force_rediscover=False, skip_steps=[])
+            elif response == 'i':
                 print()
                 print_suggestions('install')
             elif response == 'd':
