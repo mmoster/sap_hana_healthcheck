@@ -6,7 +6,19 @@ description: Validate majority maker configuration for 2-node clusters
 enabled: true
 
 source_definitions:
-  live_cmd: "crm configure show 2>/dev/null | grep -iE 'qdevice|majority|SBD' || grep -iE 'qdevice|sbd' /etc/corosync/corosync.conf 2>/dev/null"
+  # Check for qdevice/SBD configuration - supports both pcs (RHEL) and crm (SUSE)
+  live_cmd: |
+    # Try pcs first (RHEL)
+    if command -v pcs >/dev/null 2>&1; then
+      pcs quorum config 2>/dev/null
+      pcs stonith status 2>/dev/null | grep -i sbd
+      pcs property show 2>/dev/null | grep -iE 'stonith|quorum'
+    # Try crm (SUSE)
+    elif command -v crm >/dev/null 2>&1; then
+      crm configure show 2>/dev/null | grep -iE 'qdevice|majority|SBD'
+    fi
+    # Also check corosync.conf directly
+    grep -iE 'qdevice|two_node|sbd' /etc/corosync/corosync.conf 2>/dev/null || echo "NO_QDEVICE"
   sos_path: "sos_commands/pacemaker/crm_configure_show"
 
 parser:
@@ -14,16 +26,19 @@ parser:
   multiline: true
   search_patterns:
     - name: qdevice
-      regex: "(qdevice|Qdevice)"
+      regex: "(qdevice|Qdevice|quorum device)"
       group: 0
     - name: majority_maker
-      regex: "(majority|tie-breaker|SBD)"
+      regex: "(majority|tie-breaker|SBD|sbd)"
       group: 0
     - name: two_node_cluster
-      regex: "two_node.*1"
+      regex: "(two_node.*1|two_node: 1)"
+      group: 0
+    - name: no_qdevice
+      regex: "NO_QDEVICE"
       group: 0
 
 validation_logic:
   scope: cluster  # Majority maker config is cluster-wide
   expectations: []
-  # Informational - majority maker is needed for some setups
+  # Informational - for 2-node clusters, qdevice or SBD is recommended but optional

@@ -6,7 +6,21 @@ description: Validate SAPHanaSR alert and fencing configuration
 enabled: true
 
 source_definitions:
-  live_cmd: "crm configure show | grep -E 'alert|fence' 2>/dev/null || pcs alert config 2>/dev/null"
+  # Check for alert and fencing configuration - supports both pcs (RHEL) and crm (SUSE)
+  live_cmd: |
+    # Try pcs first (RHEL)
+    if command -v pcs >/dev/null 2>&1; then
+      echo "=== ALERTS ==="
+      pcs alert config 2>/dev/null || echo "NO_ALERTS"
+      echo "=== FENCING ==="
+      pcs stonith status 2>/dev/null
+      pcs stonith config 2>/dev/null | head -20
+    # Try crm (SUSE)
+    elif command -v crm >/dev/null 2>&1; then
+      crm configure show 2>/dev/null | grep -E 'alert|fence'
+    else
+      echo "NO_CLUSTER_TOOLS"
+    fi
   sos_path: "sos_commands/pacemaker/crm_configure_show"
 
 parser:
@@ -14,13 +28,16 @@ parser:
   multiline: true
   search_patterns:
     - name: alert_config
-      regex: "(alert|SAPHanaSR-alert)"
+      regex: "(Alerts:|alert|SAPHanaSR-alert)"
       group: 0
-    - name: fence_topology
-      regex: "(fencing-topology|fence_)"
+    - name: fence_config
+      regex: "(stonith|fence_|fencing-topology|Started)"
+      group: 0
+    - name: no_alerts
+      regex: "NO_ALERTS"
       group: 0
 
 validation_logic:
   scope: cluster  # Alert config is cluster-wide
   expectations: []
-  # This is informational - alerts are optional but recommended
+  # Informational - alerts are optional but recommended for SAP HANA clusters
