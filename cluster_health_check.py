@@ -36,7 +36,7 @@ sys.path.insert(0, str(SCRIPT_DIR / "access"))
 sys.path.insert(0, str(SCRIPT_DIR / "rules"))
 
 from discover_access import AccessDiscovery, show_config, delete_config
-from engine import RulesEngine, CheckStatus, Severity
+from engine import RulesEngine, CheckResult, CheckStatus, Severity
 
 
 class ClusterHealthCheck:
