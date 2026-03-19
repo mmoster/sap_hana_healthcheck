@@ -1395,9 +1395,20 @@ STEP {step_num}: CONFIGURE SAP HANA RESOURCES (one node only)
             errors = [r for r in all_results if hasattr(r, 'status') and
                      str(r.status) == 'CheckStatus.ERROR']
             cluster_not_running = False
+            cluster_not_created = False
             if len(errors) >= 3 and not packages_missing and not essential_cmd_missing:
-                # Many errors with packages installed suggests cluster isn't running
-                cluster_not_running = True
+                # Many errors with packages installed - check if cluster exists
+                try:
+                    install_status = self.check_install_status()
+                    if not install_status.get('nodes_authenticated'):
+                        # corosync.conf doesn't exist - cluster not created
+                        cluster_not_created = True
+                    elif not install_status.get('pacemaker_running'):
+                        # corosync.conf exists but cluster not running
+                        cluster_not_running = True
+                except Exception:
+                    # Fallback - assume cluster might not be running
+                    cluster_not_running = True
 
             if packages_missing or essential_cmd_missing:
                 print(f"""
@@ -1409,20 +1420,36 @@ STEP {step_num}: CONFIGURE SAP HANA RESOURCES (one node only)
     - SAP HANA resource agents
     - Cluster setup and configuration
 """)
+            elif cluster_not_created:
+                print("""
+  ╔═══════════════════════════════════════════════════════════════╗
+  ║  [!] CLUSTER NOT YET CREATED                                  ║
+  ╠═══════════════════════════════════════════════════════════════╣
+  ║                                                               ║
+  ║  /etc/corosync/corosync.conf does not exist                  ║
+  ║                                                               ║
+  ║  ACTION REQUIRED - Create the cluster first:                  ║
+  ║  ───────────────────────────────────────────                  ║
+  ║  1. Set hacluster password:  passwd hacluster                 ║
+  ║  2. Start pcsd:              systemctl enable --now pcsd      ║
+  ║  3. Authenticate nodes:      pcs host auth node1 node2        ║
+  ║  4. Create cluster:          pcs cluster setup <name> node1.. ║
+  ║  5. Start cluster:           pcs cluster start --all          ║
+  ║                                                               ║
+  ║  Run ./cluster_health_check.py -i for detailed guide          ║
+  ╚═══════════════════════════════════════════════════════════════╝
+""")
             elif cluster_not_running:
                 print("""
   ╔═══════════════════════════════════════════════════════════════╗
   ║  [!] CLUSTER NOT RUNNING                                      ║
   ╠═══════════════════════════════════════════════════════════════╣
   ║                                                               ║
-  ║  'pcs status' shows: "Connection to cluster failed"          ║
+  ║  Cluster exists but is not started                            ║
   ║                                                               ║
   ║  ACTION REQUIRED:                                             ║
   ║  ─────────────────                                            ║
-  ║  Start existing cluster:   pcs cluster start --all           ║
-  ║                                                               ║
-  ║  OR create new cluster:    pcs cluster setup <name> node1..  ║
-  ║                            pcs cluster start --all           ║
+  ║  Start the cluster:   pcs cluster start --all                 ║
   ║                                                               ║
   ╚═══════════════════════════════════════════════════════════════╝
 """)
