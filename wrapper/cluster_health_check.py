@@ -582,16 +582,27 @@ class ClusterHealthCheck:
 
         # Final status and prompt
         if needs_install:
-            print("\n[ACTION REQUIRED] Cluster packages not installed.")
+            print("\n" + "=" * 63)
+            print(" [ACTION REQUIRED] Cluster packages not installed.")
+            print("=" * 63)
+            print("\nOptions:")
+            print("  [Enter]  Show installation guide")
+            print("  [d]      Delete report files")
+            print("  [q]      Quit")
+
             try:
-                response = input("\nShow installation guide now? [Y/n]: ").strip().lower()
+                response = input("\nYour choice: ").strip().lower()
             except (EOFError, KeyboardInterrupt):
-                response = 'n'
+                response = 'q'
                 print()
 
-            if response != 'n':
+            if response == '' or response == 'y':
                 print()
                 print_suggestions('install')
+            elif response == 'd':
+                from access.discover_access import delete_config
+                delete_config(self.config_dir / AccessDiscovery.CONFIG_FILE)
+            # else: quit
             return 2
         elif failed or has_failures:
             print("\n[WARNING] Some health checks FAILED. Review report for details.")
