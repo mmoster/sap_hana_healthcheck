@@ -395,10 +395,12 @@ class ClusterHealthCheck:
 
         # Warning if cluster is configured but not running
         if status['cluster_configured'] and not status['pacemaker_running']:
-            print("\n  " + "-" * 59)
-            print("  [!] CLUSTER NOT RUNNING - 'pcs status' will fail!")
-            print("      Run: pcs cluster start --all")
-            print("  " + "-" * 59)
+            print("""
+  ╔═════════════════════════════════════════════════════════════╗
+  ║  [!] CLUSTER NOT RUNNING                                    ║
+  ╠═════════════════════════════════════════════════════════════╣
+  ║  Run:  pcs cluster start --all                              ║
+  ╚═════════════════════════════════════════════════════════════╝""")
 
         # Phase 3: Fencing & Resources
         print("\n  PHASE 3 - FENCING & RESOURCES:")
@@ -1408,19 +1410,21 @@ STEP {step_num}: CONFIGURE SAP HANA RESOURCES (one node only)
     - Cluster setup and configuration
 """)
             elif cluster_not_running:
-                print(f"""
-  CLUSTER MAY NOT BE RUNNING ({len(errors)} errors detected)
-    If 'pcs status' shows "Connection to cluster failed: Connection refused"
-    the cluster needs to be STARTED or CREATED first!
-
-    To start an existing cluster:
-      pcs cluster start --all
-
-    To create a new cluster:
-      pcs cluster setup <cluster_name> <node1> <node2>
-      pcs cluster start --all
-
-    Run ./cluster_health_check.py -i for full installation status.
+                print("""
+  ╔═══════════════════════════════════════════════════════════════╗
+  ║  [!] CLUSTER NOT RUNNING                                      ║
+  ╠═══════════════════════════════════════════════════════════════╣
+  ║                                                               ║
+  ║  'pcs status' shows: "Connection to cluster failed"          ║
+  ║                                                               ║
+  ║  ACTION REQUIRED:                                             ║
+  ║  ─────────────────                                            ║
+  ║  Start existing cluster:   pcs cluster start --all           ║
+  ║                                                               ║
+  ║  OR create new cluster:    pcs cluster setup <name> node1..  ║
+  ║                            pcs cluster start --all           ║
+  ║                                                               ║
+  ╚═══════════════════════════════════════════════════════════════╝
 """)
             elif critical:
                 print(f"""
