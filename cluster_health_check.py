@@ -1029,7 +1029,28 @@ STEP {step_num}: CONFIGURE SAP HANA RESOURCES (one node only)
                     break
 
             return 2
-        elif failed or has_failures:
+
+        # Show installation progress summary for healthy clusters
+        if not needs_install:
+            try:
+                status = self.check_install_status()
+                steps_done = sum(1 for v in [
+                    status.get('subscription_registered'),
+                    status.get('repos_enabled'),
+                    status.get('packages_installed'),
+                    status.get('pcsd_running'),
+                    status.get('cluster_configured'),
+                    status.get('stonith_configured'),
+                    status.get('hana_resources')
+                ] if v)
+                steps_total = 7
+                if steps_done < steps_total:
+                    print(f"\n[INFO] Installation progress: {steps_done}/{steps_total} steps complete.")
+                    print(f"       Run ./cluster_health_check.py -i to see remaining steps.")
+            except Exception:
+                pass
+
+        if failed or has_failures:
             print("\n[WARNING] Some health checks FAILED. Review report for details.")
             return 1
         elif has_skipped:
