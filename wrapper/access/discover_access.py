@@ -200,7 +200,7 @@ class AccessDiscovery:
             if self.config.ansible_inventory_path:
                 cmd.extend(["-i", self.config.ansible_inventory_path])
 
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=30)
+            result = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=30)
 
             if result.returncode == 0:
                 inventory = yaml.safe_load(result.stdout)
@@ -292,6 +292,7 @@ class AccessDiscovery:
         try:
             result = subprocess.run(
                 cmd,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 universal_newlines=True,
@@ -393,7 +394,7 @@ class AccessDiscovery:
                     f"{ssh_user}@{host}",
                     cmd
                 ]
-                result = subprocess.run(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                result = subprocess.run(ssh_cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                         universal_newlines=True, timeout=self.SSH_TIMEOUT + 2)
 
                 if result.returncode == 0 and result.stdout.strip():
@@ -410,6 +411,7 @@ class AccessDiscovery:
         try:
             result = subprocess.run(
                 ['hostname', '-s'],
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 universal_newlines=True, timeout=5
             )
@@ -544,7 +546,7 @@ class AccessDiscovery:
                     f"{ssh_user}@{seed_host}",
                     cmd
                 ]
-                result = subprocess.run(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                result = subprocess.run(ssh_cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                         universal_newlines=True, timeout=self.SSH_TIMEOUT + 2)
 
                 if result.returncode == 0 and result.stdout.strip():
@@ -592,7 +594,7 @@ class AccessDiscovery:
                     f"{try_user}@{hostname}",
                     "echo ok"
                 ]
-                result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=self.SSH_TIMEOUT + 2)
+                result = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=self.SSH_TIMEOUT + 2)
                 if result.returncode == 0 and "ok" in result.stdout:
                     return True, try_user
                 elif self.debug:
@@ -614,7 +616,7 @@ class AccessDiscovery:
             if self.config.ansible_inventory_path:
                 cmd.extend(["-i", self.config.ansible_inventory_path])
 
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=15)
+            result = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=15)
             return "SUCCESS" in result.stdout
         except Exception:
             return False

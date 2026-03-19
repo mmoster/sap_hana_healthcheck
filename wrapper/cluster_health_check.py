@@ -597,19 +597,37 @@ class ClusterHealthCheck:
                 response = 'q'
                 print()
 
-            if response == '':
-                # Rerun health check
-                print("\n" + "=" * 63)
-                print(" Rerunning health check...")
-                print("=" * 63)
-                return self.run_all_checks(force_rediscover=False, skip_steps=[])
-            elif response == 'i':
-                print()
-                print_suggestions('install')
-            elif response == 'd':
-                from access.discover_access import delete_config
-                delete_config(self.config_dir / AccessDiscovery.CONFIG_FILE)
-            # else: quit
+            while True:
+                if response == '':
+                    # Rerun health check
+                    print("\n" + "=" * 63)
+                    print(" Rerunning health check...")
+                    print("=" * 63)
+                    return self.run_all_checks(force_rediscover=False, skip_steps=[])
+                elif response == 'i':
+                    print()
+                    print_suggestions('install')
+                elif response == 'd':
+                    from access.discover_access import delete_config
+                    delete_config(self.config_dir / AccessDiscovery.CONFIG_FILE)
+                elif response == 'q':
+                    break
+                else:
+                    print("Invalid option.")
+
+                # Show options again
+                print("\n" + "-" * 63)
+                print("Options:")
+                print("  [Enter]  Rerun health check")
+                print("  [i]      Show installation guide")
+                print("  [d]      Delete report files")
+                print("  [q]      Quit")
+
+                try:
+                    response = input("\nYour choice: ").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    break
+
             return 2
         elif failed or has_failures:
             print("\n[WARNING] Some health checks FAILED. Review report for details.")

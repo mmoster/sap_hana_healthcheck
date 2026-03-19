@@ -178,6 +178,7 @@ class RulesEngine:
             result = subprocess.run(
                 full_cmd,
                 shell=True,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 universal_newlines=True,
                 timeout=self.CMD_TIMEOUT
