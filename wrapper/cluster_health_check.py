@@ -82,14 +82,23 @@ class ClusterHealthCheck:
             else:
                 return False, "Unsupported method"
 
+            if self.debug:
+                print(f"  [DEBUG] Executing: {full_cmd[:100]}...")
+
             result = subprocess.run(
                 full_cmd, shell=True,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 universal_newlines=True, timeout=30
             )
+
+            if self.debug:
+                print(f"  [DEBUG] Return code: {result.returncode}, Output: {result.stdout.strip()[:50]}...")
+
             return result.returncode == 0, result.stdout.strip()
         except Exception as e:
+            if self.debug:
+                print(f"  [DEBUG] Exception: {e}")
             return False, str(e)
 
     def check_install_status(self, node: str = None, method: str = 'ssh', user: str = None) -> dict:
@@ -212,7 +221,10 @@ class ClusterHealthCheck:
             print_suggestions('install')
             return
 
-        print(f"  Checking node: {node} ({method})")
+        if method == 'local':
+            print(f"  Checking: LOCAL execution (this machine)")
+        else:
+            print(f"  Checking: {node} via {method.upper()} (user={user})")
         status = self.check_install_status(node, method, user)
 
         # Print status summary

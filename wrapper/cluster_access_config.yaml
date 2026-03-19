@@ -1,37 +1,18 @@
-ansible_inventory_source: default
-ansible_inventory_path: /etc/ansible/hosts
-sosreport_directory: null
-hosts_file: /tmp/tmpi2clqtv0.txt
-nodes:
-  mmoster-thinkpadp1gen7.rmtde.csb:
-    hostname: mmoster-thinkpadp1gen7.rmtde.csb
-    ssh_reachable: false
-    ssh_user: null
-    ansible_reachable: true
-    ansible_host: mmoster-thinkpadp1gen7.rmtde.csb
-    ansible_user: null
-    sosreport_path: null
-    preferred_method: ansible
-    last_checked: '2026-03-17T14:45:57.721105'
-  hana04:
-    hostname: hana04
-    ssh_reachable: true
-    ssh_user: root
-    ansible_reachable: false
-    ansible_host: null
-    ansible_user: null
-    sosreport_path: null
-    preferred_method: ssh
-    last_checked: '2026-03-17T14:45:57.721546'
-  hana03:
-    hostname: hana03
-    ssh_reachable: true
-    ssh_user: root
-    ansible_reachable: false
-    ansible_host: null
-    ansible_user: null
-    sosreport_path: null
-    preferred_method: ssh
-    last_checked: '2026-03-17T14:45:57.721385'
-discovery_timestamp: '2026-03-17T14:45:59.986662'
+ansible_inventory_path: null
+ansible_inventory_source: null
+clusters: {}
 discovery_complete: true
+discovery_timestamp: '2026-03-19T11:52:27.730534'
+hosts_file: /tmp/tmpot4qc7cy.txt
+nodes:
+  hana03:
+    ansible_host: null
+    ansible_reachable: false
+    ansible_user: null
+    hostname: hana03
+    last_checked: '2026-03-19T11:52:24.474162'
+    preferred_method: ssh
+    sosreport_path: null
+    ssh_reachable: true
+    ssh_user: root
+sosreport_directory: null
