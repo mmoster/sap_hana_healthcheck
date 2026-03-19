@@ -107,24 +107,34 @@ class ClusterHealthCheck:
         Returns dict with status of each installation step.
         """
         status = {
+            # Phase 1: Prerequisites
             'subscription_registered': None,
             'repos_enabled': None,
+            'firewall_configured': None,
             'packages_installed': None,
+            'hacluster_password': None,
             'pcsd_running': None,
+            'pcsd_enabled': None,
+            # Phase 2: Cluster Creation
+            'nodes_authenticated': None,
+            'cluster_configured': None,
             'corosync_running': None,
             'pacemaker_running': None,
-            'cluster_configured': None,
+            'cluster_enabled': None,
             'cluster_online': None,
-            'stonith_configured': None,
+            # Phase 3: Fencing & Resources
             'stonith_enabled': None,
-            'hana_resources': None,
+            'stonith_configured': None,
             'hana_installed': None,
+            'hana_resources': None,
+            # Details
             'missing_packages': [],
             'missing_repos': [],
             'node': node,
             'method': method,
             'cluster_name': None,
             'cluster_nodes': [],
+            'offline_nodes': [],
         }
 
         if not node and not self.access_config:
@@ -183,12 +193,54 @@ class ClusterHealthCheck:
             if not status['repos_enabled']:
                 status['missing_repos'] = ['highavailability', 'sap-solutions']
 
-        # Check pcsd service
+        # Check firewall configuration
+        success, output = self._execute_check_cmd(
+            "firewall-cmd --list-services 2>/dev/null | grep -q high-availability && echo 'configured' || "
+            "systemctl is-active firewalld 2>/dev/null | grep -q inactive && echo 'configured'",
+            node, method, user
+        )
+        status['firewall_configured'] = success and 'configured' in output
+
+        # Check hacluster user password is set (can login)
+        success, output = self._execute_check_cmd(
+            "getent shadow hacluster 2>/dev/null | grep -v '!' | grep -q ':' && echo 'password_set'",
+            node, method, user
+        )
+        status['hacluster_password'] = success and 'password_set' in output
+
+        # Check pcsd service running
         success, output = self._execute_check_cmd(
             "systemctl is-active pcsd 2>/dev/null",
             node, method, user
         )
         status['pcsd_running'] = success and 'active' in output
+
+        # Check pcsd service enabled
+        success, output = self._execute_check_cmd(
+            "systemctl is-enabled pcsd 2>/dev/null",
+            node, method, user
+        )
+        status['pcsd_enabled'] = success and 'enabled' in output
+
+        # Check if nodes are authenticated (corosync.conf exists)
+        success, output = self._execute_check_cmd(
+            "test -f /etc/corosync/corosync.conf && echo 'authenticated'",
+            node, method, user
+        )
+        status['nodes_authenticated'] = success and 'authenticated' in output
+
+        # Check cluster configured and get cluster name
+        success, output = self._execute_check_cmd(
+            "pcs cluster status 2>/dev/null | head -10",
+            node, method, user
+        )
+        status['cluster_configured'] = success and 'Cluster' in output
+        if success:
+            import re
+            # Try to extract cluster name
+            match = re.search(r'Cluster name:\s*(\S+)', output)
+            if match:
+                status['cluster_name'] = match.group(1)
 
         # Check corosync service
         success, output = self._execute_check_cmd(
@@ -204,17 +256,12 @@ class ClusterHealthCheck:
         )
         status['pacemaker_running'] = success and 'active' in output
 
-        # Check cluster configured and get cluster name
+        # Check cluster enabled (auto-start on boot)
         success, output = self._execute_check_cmd(
-            "pcs cluster status 2>/dev/null | head -5",
+            "systemctl is-enabled corosync pacemaker 2>/dev/null | grep -q enabled && echo 'enabled'",
             node, method, user
         )
-        status['cluster_configured'] = success and 'Cluster' in output
-        if success and 'Cluster name:' in output:
-            import re
-            match = re.search(r'Cluster name:\s*(\S+)', output)
-            if match:
-                status['cluster_name'] = match.group(1)
+        status['cluster_enabled'] = success and 'enabled' in output
 
         # Check if nodes are online
         success, output = self._execute_check_cmd(
@@ -321,53 +368,65 @@ class ClusterHealthCheck:
                 return "[?]"
             return "[OK]" if val else "[--]"
 
-        # Infrastructure
-        print("\n  INFRASTRUCTURE:")
-        print(f"    {status_icon(status['subscription_registered'])} Subscription registered")
-        print(f"    {status_icon(status['repos_enabled'])} HA/SAP repositories enabled")
+        # Phase 1: Prerequisites
+        print("\n  PHASE 1 - PREREQUISITES:")
+        print(f"    {status_icon(status['subscription_registered'])} Subscription/repos available")
+        print(f"    {status_icon(status['firewall_configured'])} Firewall ports open (high-availability)")
         print(f"    {status_icon(status['packages_installed'])} Cluster packages installed")
         if status['missing_packages']:
             print(f"        Missing: {', '.join(status['missing_packages'])}")
+        print(f"    {status_icon(status['hacluster_password'])} hacluster user password set")
+        print(f"    {status_icon(status['pcsd_running'])} PCSD daemon running")
+        print(f"    {status_icon(status['pcsd_enabled'])} PCSD enabled on boot")
 
-        # Cluster services
-        print("\n  CLUSTER SERVICES:")
-        print(f"    {status_icon(status['pcsd_running'])} PCSD service (cluster daemon)")
-        print(f"    {status_icon(status['corosync_running'])} Corosync service (messaging)")
-        print(f"    {status_icon(status['pacemaker_running'])} Pacemaker service (resource manager)")
-
-        # Cluster configuration
-        print("\n  CLUSTER CONFIGURATION:")
-        cluster_info = ""
-        if status['cluster_name']:
-            cluster_info = f" ({status['cluster_name']})"
+        # Phase 2: Cluster Creation
+        print("\n  PHASE 2 - CLUSTER CREATION:")
+        print(f"    {status_icon(status['nodes_authenticated'])} Nodes authenticated (corosync.conf)")
+        cluster_info = f" ({status['cluster_name']})" if status['cluster_name'] else ""
         print(f"    {status_icon(status['cluster_configured'])} Cluster configured{cluster_info}")
+        print(f"    {status_icon(status['corosync_running'])} Corosync running (messaging)")
+        print(f"    {status_icon(status['pacemaker_running'])} Pacemaker running (resource mgr)")
+        print(f"    {status_icon(status['cluster_enabled'])} Cluster enabled on boot")
+        print(f"    {status_icon(status['cluster_online'])} All nodes online")
         if status['cluster_nodes']:
-            print(f"        Online nodes: {', '.join(status['cluster_nodes'])}")
-        print(f"    {status_icon(status['cluster_online'])} Cluster nodes online")
-        print(f"    {status_icon(status['stonith_enabled'])} STONITH enabled in properties")
-        print(f"    {status_icon(status['stonith_configured'])} STONITH device configured & running")
+            print(f"        Online: {', '.join(status['cluster_nodes'])}")
+        if status.get('offline_nodes'):
+            print(f"        Offline: {', '.join(status['offline_nodes'])}")
 
-        # SAP HANA
-        print("\n  SAP HANA:")
+        # Phase 3: Fencing & Resources
+        print("\n  PHASE 3 - FENCING & RESOURCES:")
+        print(f"    {status_icon(status['stonith_enabled'])} STONITH enabled")
+        print(f"    {status_icon(status['stonith_configured'])} STONITH device running")
         print(f"    {status_icon(status['hana_installed'])} SAP HANA installed")
         print(f"    {status_icon(status['hana_resources'])} SAP HANA cluster resources")
 
-        # Determine what steps are needed
+        # Determine what steps are needed based on phases
         steps_needed = []
+
+        # Phase 1: Prerequisites
         if not status['subscription_registered']:
             steps_needed.append('subscription')
-        if not status['repos_enabled']:
-            steps_needed.append('repos')
+        if not status['firewall_configured']:
+            steps_needed.append('firewall')
         if not status['packages_installed']:
             steps_needed.append('packages')
-        if not status['pcsd_running']:
+        if not status['hacluster_password']:
+            steps_needed.append('hacluster')
+        if not status['pcsd_running'] or not status['pcsd_enabled']:
             steps_needed.append('pcsd')
-        # Check if cluster services need starting (packages installed but services not running)
-        if status['packages_installed'] and not status['corosync_running']:
-            steps_needed.append('start_services')
-        if not status['cluster_configured']:
-            steps_needed.append('cluster')
-        if not status['stonith_enabled'] or not status['stonith_configured']:
+
+        # Phase 2: Cluster Creation
+        if status['pcsd_running'] and not status['nodes_authenticated']:
+            steps_needed.append('authenticate')
+        if status['nodes_authenticated'] and not status['cluster_configured']:
+            steps_needed.append('cluster_setup')
+        if status['cluster_configured'] and not status['corosync_running']:
+            steps_needed.append('cluster_start')
+        if status['corosync_running'] and not status['cluster_enabled']:
+            steps_needed.append('cluster_enable')
+
+        # Phase 3: Fencing & Resources
+        if status['cluster_online'] and (not status['stonith_enabled'] or not status['stonith_configured']):
             steps_needed.append('stonith')
         if status['hana_installed'] and not status['hana_resources']:
             steps_needed.append('hana')
@@ -400,21 +459,22 @@ STEP {step_num}: REGISTER SUBSCRIPTION (both nodes)
   # Register system and attach SAP subscription
   subscription-manager register
   subscription-manager attach --pool=<SAP_POOL_ID>
+
+  # Enable High Availability repository (RHEL 9)
+  subscription-manager repos --enable=rhel-9-for-x86_64-highavailability-rpms
 """)
             step_num += 1
 
-        if 'repos' in steps_needed:
+        if 'firewall' in steps_needed:
             print(f"""
-STEP {step_num}: ENABLE REPOSITORIES (both nodes)
+STEP {step_num}: CONFIGURE FIREWALL (both nodes)
 ---------------------------------------------------------------
-  # Enable required repositories (RHEL 9)
-  subscription-manager repos --enable=rhel-9-for-x86_64-baseos-e4s-rpms
-  subscription-manager repos --enable=rhel-9-for-x86_64-appstream-e4s-rpms
-  subscription-manager repos --enable=rhel-9-for-x86_64-sap-solutions-e4s-rpms
-  subscription-manager repos --enable=rhel-9-for-x86_64-sap-netweaver-e4s-rpms
-  subscription-manager repos --enable=rhel-9-for-x86_64-highavailability-e4s-rpms
+  # Allow High Availability traffic through the firewall
+  firewall-cmd --permanent --add-service=high-availability
+  firewall-cmd --reload
 
-  # For RHEL 10, replace "9" with "10" in the above commands
+  # Verify
+  firewall-cmd --list-services | grep high-availability
 """)
             step_num += 1
 
@@ -424,7 +484,7 @@ STEP {step_num}: ENABLE REPOSITORIES (both nodes)
             print(f"""
 STEP {step_num}: INSTALL CLUSTER PACKAGES (both nodes)
 ---------------------------------------------------------------
-  # Install missing packages
+  # Install required packages
   dnf install -y {pkg_list}
 
   # Verify installation
@@ -432,60 +492,78 @@ STEP {step_num}: INSTALL CLUSTER PACKAGES (both nodes)
 """)
             step_num += 1
 
-        if 'pcsd' in steps_needed:
+        if 'hacluster' in steps_needed:
             print(f"""
-STEP {step_num}: CONFIGURE PCSD SERVICE (both nodes)
+STEP {step_num}: SET HACLUSTER PASSWORD (both nodes)
 ---------------------------------------------------------------
-  # Set password for hacluster user
+  # Set password for hacluster user (use SAME password on all nodes)
   passwd hacluster
 
+  # Verify the user exists
+  id hacluster
+""")
+            step_num += 1
+
+        if 'pcsd' in steps_needed:
+            print(f"""
+STEP {step_num}: START PCSD DAEMON (both nodes)
+---------------------------------------------------------------
   # Enable and start pcsd service
   systemctl enable --now pcsd.service
 
-  # Open firewall ports
-  firewall-cmd --permanent --add-service=high-availability
-  firewall-cmd --reload
+  # Verify pcsd is running
+  systemctl status pcsd
 """)
             step_num += 1
 
-        if 'start_services' in steps_needed:
+        if 'authenticate' in steps_needed:
             print(f"""
-STEP {step_num}: START CLUSTER SERVICES (both nodes)
+STEP {step_num}: AUTHENTICATE NODES (one node only)
 ---------------------------------------------------------------
-  The cluster packages are installed but services are not running.
+  # Authenticate cluster nodes (RHEL 9 syntax: pcs host auth)
+  pcs host auth node1 node2 -u hacluster
 
-  # Check current service status
-  systemctl status pcsd corosync pacemaker
-
-  # If cluster was previously configured, start it:
-  pcs cluster start --all
-
-  # Or if this is a fresh setup, ensure pcsd is running first:
-  systemctl enable --now pcsd
-
-  # Then configure the cluster (see next step)
-
-  # After cluster is configured and started, verify:
-  pcs cluster status
-  pcs status
+  # Enter the hacluster password when prompted
+  # This creates /etc/corosync/corosync.conf on successful auth
 """)
             step_num += 1
 
-        if 'cluster' in steps_needed:
+        if 'cluster_setup' in steps_needed:
             print(f"""
 STEP {step_num}: CREATE CLUSTER (one node only)
 ---------------------------------------------------------------
-  # Authenticate cluster nodes
-  pcs host auth node1 node2 -u hacluster -p 'YourPassword'
+  # Create the cluster (replace my_cluster with your cluster name)
+  pcs cluster setup my_cluster node1 node2
 
-  # Create and start the cluster
-  pcs cluster setup <cluster_name> --start node1 node2
+  # This generates /etc/corosync/corosync.conf on all nodes
+""")
+            step_num += 1
 
-  # Enable cluster to start on boot
+        if 'cluster_start' in steps_needed:
+            print(f"""
+STEP {step_num}: START CLUSTER (one node only)
+---------------------------------------------------------------
+  # Start the cluster on all nodes
+  pcs cluster start --all
+
+  # Verify cluster is running
+  pcs cluster status
+  pcs status
+
+  # Monitor in real-time
+  watch pcs status
+""")
+            step_num += 1
+
+        if 'cluster_enable' in steps_needed:
+            print(f"""
+STEP {step_num}: ENABLE CLUSTER ON BOOT (one node only)
+---------------------------------------------------------------
+  # Enable cluster to start automatically on boot
   pcs cluster enable --all
 
-  # Verify cluster status
-  pcs cluster status
+  # Verify
+  systemctl is-enabled corosync pacemaker
 """)
             step_num += 1
 
