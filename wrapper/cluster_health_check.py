@@ -517,7 +517,27 @@ class ClusterHealthCheck:
             skipped = [r for r in all_results if hasattr(r, 'status') and
                       str(r.status) == 'CheckStatus.SKIPPED']
 
-            if critical:
+            # Check for package/command not found issues
+            packages_missing = False
+            commands_missing = False
+            for r in all_results:
+                msg = getattr(r, 'message', '') or ''
+                if 'package not found' in msg.lower() or 'not found' in msg.lower():
+                    packages_missing = True
+                if "command '" in msg.lower() and "not found" in msg.lower():
+                    commands_missing = True
+
+            if packages_missing or commands_missing:
+                print(f"""
+  INSTALLATION REQUIRED: Cluster packages not installed!
+    Run: ./cluster_health_check.py --suggest install
+
+    This will show step-by-step installation instructions for:
+    - Pacemaker, Corosync, pcs
+    - SAP HANA resource agents
+    - Cluster setup and configuration
+""")
+            elif critical:
                 print(f"""
   CRITICAL issues found ({len(critical)}). Review:
     - Check the report file for details
@@ -525,18 +545,19 @@ class ClusterHealthCheck:
     - Verify quorum configuration
 """)
 
-            if warnings:
+            if warnings and not packages_missing:
                 print(f"  Warnings found ({len(warnings)}). Review report for details.")
 
-            if skipped:
+            if skipped and not commands_missing:
                 print(f"  Skipped checks ({len(skipped)}). Some commands may not be available.")
 
         print("""
   Common next steps:
-    ./cluster_health_check.py --show-config     # View current config
-    ./cluster_health_check.py -f hana01         # Force re-discovery
-    ./cluster_health_check.py --list-rules      # List all health checks
-    ./cluster_health_check.py --guide           # Show detailed usage guide
+    ./cluster_health_check.py --suggest install  # Installation guide
+    ./cluster_health_check.py --show-config      # View current config
+    ./cluster_health_check.py -f hana01          # Force re-discovery
+    ./cluster_health_check.py --list-rules       # List all health checks
+    ./cluster_health_check.py --guide            # Show detailed usage guide
 """)
 
         print("  Documentation:")
@@ -1418,7 +1439,7 @@ Examples:
     parser.add_argument(
         '--suggest-skip',
         nargs='+',
-        choices=['access', 'config', 'pacemaker', 'sap'],
+        choices=['access', 'config', 'pacemaker', 'sap', 'install'],
         help='Skip these steps when auto-suggesting (use with --suggest)'
     )
 
@@ -1456,28 +1477,51 @@ Examples:
             with open(status_file, 'r') as f:
                 status = yaml.safe_load(f)
 
-            failed_steps = status.get('failed_steps', [])
+            # Check for package/command issues in the last report
+            packages_missing = False
+            report_file = config_dir / f"health_check_report_{status.get('timestamp', '').replace(':', '').replace('-', '').split('.')[0]}.yaml"
+            # Try to find most recent report
+            import glob
+            reports = sorted(glob.glob(str(config_dir / "health_check_report_*.yaml")), reverse=True)
+            if reports:
+                try:
+                    with open(reports[0], 'r') as f:
+                        report = yaml.safe_load(f)
+                    for result in report.get('results', []):
+                        msg = result.get('message', '') or ''
+                        if 'package not found' in msg.lower() or ("command '" in msg.lower() and "not found" in msg.lower()):
+                            packages_missing = True
+                            break
+                except Exception:
+                    pass
 
-            # Filter out skipped steps
-            if skip_steps:
-                failed_steps = [s for s in failed_steps if s not in skip_steps]
+            if packages_missing and 'install' not in skip_steps:
+                print("Cluster packages not installed!")
+                print("Showing installation guide...\n")
+                step = 'install'
+            else:
+                failed_steps = status.get('failed_steps', [])
+
+                # Filter out skipped steps
                 if skip_steps:
-                    print(f"Skipping: {', '.join(skip_steps)}\n")
+                    failed_steps = [s for s in failed_steps if s not in skip_steps]
+                    if skip_steps:
+                        print(f"Skipping: {', '.join(skip_steps)}\n")
 
-            if not failed_steps:
-                print("No failing steps found!")
-                if skip_steps:
-                    print(f"(after skipping: {', '.join(skip_steps)})")
-                print("\nAll steps passed in the last run.")
-                sys.exit(0)
+                if not failed_steps:
+                    print("No failing steps found!")
+                    if skip_steps:
+                        print(f"(after skipping: {', '.join(skip_steps)})")
+                    print("\nAll steps passed in the last run.")
+                    sys.exit(0)
 
-            step = failed_steps[0]
-            print(f"First failing step: {step}")
-            if len(failed_steps) > 1:
-                others = ', '.join(failed_steps[1:])
-                print(f"Other failing steps: {others}")
-                print(f"\nTo skip this and see next: --suggest --suggest-skip {step}")
-            print()
+                step = failed_steps[0]
+                print(f"First failing step: {step}")
+                if len(failed_steps) > 1:
+                    others = ', '.join(failed_steps[1:])
+                    print(f"Other failing steps: {others}")
+                    print(f"\nTo skip this and see next: --suggest --suggest-skip {step}")
+                print()
 
         print_suggestions(step)
         sys.exit(0)
