@@ -1366,9 +1366,12 @@ STEP {step_num}: CONFIGURE SAP HANA RESOURCES (one node only)
 
     def _print_next_steps(self, results: dict):
         """Print suggested next steps based on results."""
-        print("\n" + "-" * 63)
-        print(" Next Steps")
-        print("-" * 63)
+        print("\n")
+        print("=" * 63)
+        print("=" * 63)
+        print(" NEXT STEPS")
+        print("=" * 63)
+        print("=" * 63)
 
         # Check what was done and suggest next actions
         if not results.get('access'):
