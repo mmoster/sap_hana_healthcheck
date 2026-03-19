@@ -468,14 +468,65 @@ class ClusterHealthCheck:
             print(f"Nodes checked: {', '.join(sorted(nodes))}")
 
             # Show detected cluster type from CHK_CLUSTER_TYPE
-            if self.rules_engine and hasattr(self.rules_engine, 'results'):
-                for r in self.rules_engine.results:
+            if self.check_results:
+                for r in self.check_results:
                     if hasattr(r, 'check_id') and r.check_id == 'CHK_CLUSTER_TYPE':
                         cluster_type = r.details.get('cluster_type', 'Unknown') if r.details else 'Unknown'
                         print(f"Cluster Type: {cluster_type}")
                         if r.message and 'configuration' in r.message:
                             print(f"  ({r.message})")
                         break
+
+        # Show health check results summary
+        if self.check_results:
+            all_results = self.check_results
+            passed = [r for r in all_results if hasattr(r, 'status') and str(r.status) == 'CheckStatus.PASSED']
+            failed_checks = [r for r in all_results if hasattr(r, 'status') and str(r.status) == 'CheckStatus.FAILED']
+            skipped = [r for r in all_results if hasattr(r, 'status') and str(r.status) == 'CheckStatus.SKIPPED']
+            errors = [r for r in all_results if hasattr(r, 'status') and str(r.status) == 'CheckStatus.ERROR']
+
+            print(f"\nHealth Check Results:")
+            print(f"  PASSED:  {len(passed):3d}  FAILED: {len(failed_checks):3d}  SKIPPED: {len(skipped):3d}  ERROR: {len(errors):3d}")
+
+            # Check for installation issues
+            packages_missing = False
+            commands_missing = []
+            for r in all_results:
+                msg = getattr(r, 'message', '') or ''
+                if 'package not found' in msg.lower():
+                    packages_missing = True
+                if "command '" in msg.lower() and "not found" in msg.lower():
+                    # Extract command name
+                    import re
+                    match = re.search(r"command '(\w+)'", msg.lower())
+                    if match:
+                        cmd = match.group(1)
+                        if cmd not in commands_missing:
+                            commands_missing.append(cmd)
+
+            if packages_missing or commands_missing:
+                print()
+                print("=" * 63)
+                print(" INSTALLATION REQUIRED")
+                print("=" * 63)
+                if packages_missing:
+                    print("  Cluster packages (pacemaker, corosync) are NOT installed!")
+                if commands_missing:
+                    print(f"  Missing commands: {', '.join(commands_missing)}")
+                print()
+                print("  To see installation steps, run:")
+                print("    ./cluster_health_check.py -i")
+                print("    ./cluster_health_check.py --suggest install")
+                print("=" * 63)
+
+            elif failed_checks:
+                print()
+                print("-" * 63)
+                print(" Failed Checks (CRITICAL issues):")
+                for r in failed_checks:
+                    if hasattr(r, 'severity') and str(r.severity) == 'Severity.CRITICAL':
+                        print(f"  - {r.check_id}: {r.message[:50]}...")
+                print("-" * 63)
 
         # Show all steps with status
         print("\nSteps completed:")
@@ -517,8 +568,33 @@ class ClusterHealthCheck:
         if failed:
             return 1
 
-        print("[OK] All checks passed")
-        return 0
+        # Check actual health check results for final message
+        has_failures = False
+        has_skipped = False
+        needs_install = False
+        if self.check_results:
+            for r in self.check_results:
+                status = str(getattr(r, 'status', ''))
+                msg = getattr(r, 'message', '') or ''
+                if status == 'CheckStatus.FAILED':
+                    has_failures = True
+                if status == 'CheckStatus.SKIPPED':
+                    has_skipped = True
+                if 'package not found' in msg.lower() or ("command '" in msg.lower() and "not found" in msg.lower()):
+                    needs_install = True
+
+        if needs_install:
+            print("\n[ACTION REQUIRED] Cluster packages not installed. Run: ./cluster_health_check.py -i")
+            return 2
+        elif has_failures:
+            print("\n[WARNING] Some health checks FAILED. Review report for details.")
+            return 1
+        elif has_skipped:
+            print("\n[INFO] Some checks were skipped (commands not available).")
+            return 0
+        else:
+            print("\n[OK] All health checks passed!")
+            return 0
 
     def _print_next_steps(self, results: dict):
         """Print suggested next steps based on results."""
@@ -536,7 +612,7 @@ class ClusterHealthCheck:
             return
 
         # Get results from rules engine if available
-        all_results = getattr(self.rules_engine, 'results', []) if self.rules_engine else []
+        all_results = self.check_results
 
         if all_results:
             # Analyze results
