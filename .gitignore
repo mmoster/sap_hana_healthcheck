@@ -31,3 +31,4 @@ last_run_status.yaml
 # OS
 .DS_Store
 Thumbs.db
+*.src.rpm
