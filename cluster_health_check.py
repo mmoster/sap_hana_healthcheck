@@ -48,7 +48,7 @@ class ClusterHealthCheck:
     def __init__(self, config_dir: str = None, sosreport_dir: str = None,
                  hosts_file: str = None, workers: int = 10, rules_path: str = None,
                  debug: bool = False, ansible_group: str = None, skip_ansible: bool = False,
-                 cluster_name: str = None, local_mode: bool = False):
+                 cluster_name: str = None, local_mode: bool = False, strict_mode: bool = False):
         self.config_dir = Path(config_dir) if config_dir else SCRIPT_DIR
         self.sosreport_dir = sosreport_dir
         self.hosts_file = hosts_file
@@ -62,6 +62,7 @@ class ClusterHealthCheck:
         self.skip_ansible = skip_ansible
         self.cluster_name = cluster_name
         self.local_mode = local_mode
+        self.strict_mode = strict_mode
 
     def _debug_print(self, message: str):
         """Print debug message if debug mode is enabled."""
@@ -684,6 +685,7 @@ STEP {step_num}: CONFIGURE SAP HANA RESOURCES (one node only)
             print(f"  Config directory:    {self.config_dir}")
             print(f"  Access config file:  {self.config_dir / AccessDiscovery.CONFIG_FILE}")
             print(f"  Rules path:          {self.rules_path}")
+            print(f"  Strict mode:         {self.strict_mode}")
             print(f"  Local mode:          {self.local_mode}")
             print(f"  Hosts file:          {self.hosts_file or '(auto-discover from Ansible)'}")
             print(f"  SOSreport dir:       {self.sosreport_dir or '(not set)'}")
@@ -760,10 +762,15 @@ STEP {step_num}: CONFIGURE SAP HANA RESOURCES (one node only)
             access_dict = asdict(self.access_config) if self.access_config else {}
             self.rules_engine = RulesEngine(
                 rules_path=self.rules_path,
-                access_config=access_dict
+                access_config=access_dict,
+                strict_mode=self.strict_mode
             )
             self.rules_engine.load_rules()
             self._debug_print(f"Loaded {len(self.rules_engine.rules)} rules")
+            if not self.strict_mode:
+                optional_count = sum(1 for r in self.rules_engine.rules if r.optional)
+                if optional_count > 0:
+                    self._debug_print(f"Non-strict mode: {optional_count} optional checks will be warnings")
 
     def _run_rules_parallel(self, rules: list, nodes: dict) -> list:
         """Run multiple rules in parallel using thread pool."""
@@ -2490,6 +2497,13 @@ Examples:
         help='Enable debug mode (show config files used and step progress)'
     )
 
+    # Strict mode option
+    parser.add_argument(
+        '--strict',
+        action='store_true',
+        help='Strict mode: all checks required (fencing, alerts). Default: optional checks are warnings only'
+    )
+
     # Local mode option
     parser.add_argument(
         '--local', '-l',
@@ -2728,7 +2742,8 @@ Examples:
         debug=args.debug,
         ansible_group=args.group,
         cluster_name=args.cluster,
-        local_mode=local_mode
+        local_mode=local_mode,
+        strict_mode=args.strict
     )
 
     def cleanup_temp_file():

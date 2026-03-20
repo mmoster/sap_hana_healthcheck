@@ -4,6 +4,7 @@ version: "1.0"
 severity: CRITICAL
 description: Verify STONITH/fencing is enabled and configured
 enabled: true
+optional: true  # Fencing optional in non-strict mode (lab/test environments)
 
 source_definitions:
   live_cmd: "pcs property show stonith-enabled 2>/dev/null; echo '---'; pcs status 2>/dev/null | grep -iE 'stonith|fence'"

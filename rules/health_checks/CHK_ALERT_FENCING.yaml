@@ -4,6 +4,7 @@ version: "1.0"
 severity: WARNING
 description: Validate SAPHanaSR alert and fencing configuration
 enabled: true
+optional: true  # Alerts optional in non-strict mode
 
 source_definitions:
   # Check for alert and fencing configuration - supports both pcs (RHEL) and crm (SUSE)

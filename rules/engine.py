@@ -80,6 +80,7 @@ class RuleDefinition:
     severity: str = None
     description: str = None
     enabled: bool = True
+    optional: bool = False  # If True, failures are warnings in non-strict mode
     source_definitions: Dict[str, Any] = None
     parser: Dict[str, Any] = None
     validation_logic: Dict[str, Any] = None
@@ -100,11 +101,12 @@ class RulesEngine:
     CMD_TIMEOUT = 15  # Reduced from 30 to avoid long waits
     MAX_WORKERS = 5
 
-    def __init__(self, rules_path: str = None, access_config: dict = None):
+    def __init__(self, rules_path: str = None, access_config: dict = None, strict_mode: bool = False):
         self.rules_path = Path(rules_path) if rules_path else Path(self.DEFAULT_RULES_PATH)
         self.access_config = access_config or {}
         self.rules: List[RuleDefinition] = []
         self.results: List[CheckResult] = []
+        self.strict_mode = strict_mode
 
     def load_rules(self) -> List[RuleDefinition]:
         """Load all CHK_*.yaml rule files."""
@@ -132,6 +134,7 @@ class RulesEngine:
                     severity=data.get('severity', 'WARNING'),
                     description=data.get('description', ''),
                     enabled=data.get('enabled', True),
+                    optional=data.get('optional', False),
                     source_definitions=data.get('source_definitions', {}),
                     parser=data.get('parser', {}),
                     validation_logic=data.get('validation_logic', {}),
@@ -491,13 +494,17 @@ class RulesEngine:
                 elif fe['severity'] == 'WARNING' and max_severity != 'CRITICAL':
                     max_severity = 'WARNING'
 
+            # In non-strict mode, downgrade optional checks from CRITICAL to WARNING
+            if rule.optional and not self.strict_mode and max_severity == 'CRITICAL':
+                max_severity = 'WARNING'
+
             return CheckResult(
                 check_id=rule.check_id,
                 description=rule.description,
                 status=CheckStatus.FAILED,
                 severity=Severity[max_severity],
                 message="; ".join(fe['message'] for fe in failed_expectations),
-                details={'parsed': parsed, 'failed': failed_expectations},
+                details={'parsed': parsed, 'failed': failed_expectations, 'optional': rule.optional},
                 node=node
             )
 
